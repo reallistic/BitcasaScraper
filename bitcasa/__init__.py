@@ -54,7 +54,11 @@ class BitcasaParser(argparse.ArgumentParser):
         self.base_parser.add_argument('-p', '--password', dest='password',
             required=True, help='The password for authentication')
 
-        self.base_parser.add_argument('-n', '--connections',
+        self.base_parser.add_argument('--chunk-size', type=int,
+            default=1024*1024, dest='chunk_size',
+            help='Size in bytes to download at a time')
+
+        self.base_parser.add_argument('-n', '--connections', type=int,
             dest='max_connections', help=('The maximum number of connections'
                                           ' to make to bitcasa'))
 

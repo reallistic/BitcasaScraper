@@ -39,6 +39,37 @@ class AuthenticationManager(object):
             data = {'csrf_token': self._cookies.get('tkey_csrf0portal')}
             self.request(BITCASA.ENDPOINTS.logout, method='POST', data=data)
 
+    def make_download_request(self, url, ignore_session_state=False):
+        self.request_lock.acquire()
+        if not ignore_session_state:
+            self.assert_valid_session()
+
+        if not self._connected:
+            kwargs.setdefault('cookies', self._cookies)
+
+        logger.debug('%s requesting url %s' % (self.id, url))
+
+        resp = None
+        error = None
+        try:
+            resp = self._session.get(url, stream=True, timeout=120)
+            resp.raise_for_status()
+        except (ValueError, RequestException):
+            error = str(resp.status_code) if resp else 'unknown'
+
+        if error is not None:
+            if error == 'unauthorized':
+                self._connected = False
+
+            self.request_lock.release()
+            raise ConnectionError(error_message % response_data.get('error'))
+
+        if not self._connected:
+            self._connected = True
+
+        return resp
+
+
     def request(self, endpoint, method='GET', ignore_session_state=False,
                 **kwargs):
 

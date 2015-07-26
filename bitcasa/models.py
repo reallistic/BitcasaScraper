@@ -1,6 +1,6 @@
 import os
 
-from .globals import BITCASA
+from .globals import BITCASA, logger
 
 class LaxObjectMetaClass(type):
     def __new__(mcs, name, bases, attrs):
@@ -77,6 +77,9 @@ class BitcasaItem(LaxObject):
     _keys = ['modified', 'created', 'id', 'name', 'parent_id',
              'version', 'path', 'path_name', 'drive']
 
+    def __repr__(self):
+        return '<%s %s:%s>' % (self.__class__.__name__, self.id, self.name)
+
     @classmethod
     def from_meta_data(cls, data, drive, parent=None, path=None):
         if 'meta' in data:
@@ -129,6 +132,10 @@ class BitcasaFile(BitcasaItem):
                                                      path=path)
         return ins
 
+    def download(self, destination_dir, name=None):
+        destination = os.path.join(destination_dir, name or self.name)
+        self.drive.download_file(self, destination)
+
 
 class BitcasaFolder(BitcasaItem):
 
@@ -167,8 +174,9 @@ class BitcasaFolder(BitcasaItem):
 
     def fetch_items(self, force=False):
         if not self.items or force:
-            path = self.path.rstrip('/')
+            path = self.path.lstrip('/')
             url = os.path.join(BITCASA.ENDPOINTS.root_folder, path)
+            logger.debug('fetching folder: %s | %s', path, url)
             with self.drive.connection_pool.pop() as conn:
                 folder_meta = conn.request(url)
             self.items_from_data(folder_meta['result'].get('items'))

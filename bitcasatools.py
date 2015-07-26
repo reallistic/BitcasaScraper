@@ -18,10 +18,19 @@ pool = None
 def main():
     global pool
     drive = None
+    args = None
 
-    parser = BitcasaParser()
-    args = parser.parse_args()
-    setup_logger('BitcasaConsole', config=args)
+    try:
+        parser = BitcasaParser()
+        args = parser.parse_args()
+        setup_logger('BitcasaConsole', config=args)
+    except:
+        if args and args.pdb:
+            traceback.print_exc()
+            cl_args = args
+            import pdb; pdb.set_trace()
+        else:
+            raise
 
     if args.auth:
         try:
@@ -47,5 +56,9 @@ def main():
 if __name__ == '__main__':
     try:
         main()
+    except Exception as err:
+        if not isinstance(err, (SystemExit, KeyboardInterrupt)):
+            traceback.print_exc()
     finally:
-        pool.logout()
+        if pool:
+            pool.logout()

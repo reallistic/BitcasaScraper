@@ -2,69 +2,82 @@ import dryscrape
 import requests
 
 from requests import RequestException
+from uuid import uuid4
+from threading import Lock
 
 from .exceptions import *
-from .globals import connection, _connection_stack, BITCASA, logger
-from .models import BitcasaUser
+from .globals import BITCASA, logger
 
 class AuthenticationManager(object):
     _session = None
     _cookies = None
     _connected = None
+    id = None
 
-    def __init__(self, username, password, auto_open=True):
+    def __init__(self, username=None, password=None, cookies=None, auto_open=True):
+        self.id = uuid4().hex
         self._connected = False
         self._username = username
         self._password = password
+        self._cookies = cookies
+
+        if not any(((username, password), cookies)):
+            message = 'Specify either username and password or cookies'
+            raise AuthenticationError(message, username=username,
+                                      password=password, cookies=cookies)
         if auto_open:
             self.open_session()
 
+        self.request_lock = Lock()
+
     def assert_valid_session(self):
-        if not all((self._session, self._cookies, self._connected)):
-            raise ConnectionError('Not connected')
+        if not all((self._session, self._cookies)):
+            raise ConnectionError('Invalid session. Did you open one?')
+
+    def logout(self):
+        if self._cookies:
+            data = {'csrf_token': self._cookies.get('tkey_csrf0portal')}
+            self.request(BITCASA.ENDPOINTS.logout, method='POST', data=data)
 
     def request(self, endpoint, method='GET', ignore_session_state=False,
                 **kwargs):
-        auto_release_connection = kwargs.pop('auto_release_connection', True)
+
+        self.request_lock.acquire()
         if not ignore_session_state:
             self.assert_valid_session()
 
+        if not self._connected:
+            kwargs.setdefault('cookies', self._cookies)
+
         url = BITCASA.url_from_endpoint(endpoint)
 
+        logger.debug('%s requesting url %s' % (self.id, url))
+
+        error_message = 'Error connecting to drive.bitcasa.com. %s'
+        response_data = {}
+        resp = None
         try:
             resp = self._session.request(method.upper(), url, **kwargs)
             resp.raise_for_status()
             response_data = resp.json()
         except (ValueError, RequestException):
-            if auto_release_connection:
-                self.release()
-            raise ConnectionError((error_message % '').strip())
+            error_code = str(resp.status_code) if resp else 'unknown'
+            response_data.setdefault('error', error_code)
 
         error = response_data.get('error')
-        if error:
+        if error is not None:
             if error == 'unauthorized':
                 self._connected = False
 
+            self.request_lock.release()
             raise ConnectionError(error_message % response_data.get('error'))
 
-        if auto_release_connection:
-            self.release()
+        if not self._connected:
+            self._connected = True
 
+        self.request_lock.release()
         # Copy to prevent memory leak
         return response_data.copy()
-
-    def release(self):
-        logger.info('returning connection')
-        _connection_stack.push(self)
-
-    def connect(self):
-        error_message = 'Error connecting to drive.bitcasa.com. %s'
-
-        response_data = self.request(BITCASA.ENDPOINTS.user_account,
-                                     cookies=self._cookies,
-                                     ignore_session_state=True)
-        self.user = BitcasaUser.from_account_data(response_data)
-        self._connected = True
 
     def set_cookies(self):
         sess = dryscrape.Session(base_url=BITCASA.BASE_URL)
@@ -82,6 +95,7 @@ class AuthenticationManager(object):
         # wait for the page to load.
         listing_items = sess.at_css('div.listing-items', timeout=5)
         if not listing_items:
+            sess.render('bitcasa_login.png')
             raise AuthenticationError('login failed', sess=sess,
                                       username=self._username,
                                       password=self._password)
@@ -100,6 +114,9 @@ class AuthenticationManager(object):
 
         self._cookies = parsed_cookies
 
+    def get_cookies(self):
+        return self._cookies
+
     def open_session(self, reconnect=False, auto_test=True):
         if not reconnect and self._session:
             return self._session
@@ -108,4 +125,3 @@ class AuthenticationManager(object):
             self.set_cookies()
 
         self._session = requests.Session()
-        self.connect()

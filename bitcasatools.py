@@ -7,22 +7,26 @@ if cur_version < pyssl_version:
 
 import traceback
 
-from bitcasa import BitcasaDrive, BitcasaParser
-
+from bitcasa import BitcasaParser
 from bitcasa.authentication import AuthenticationManager
-from bitcasa.globals import (connection, connect, set_connection_params,
-                             setup_logger)
+from bitcasa.connection import ConnectionPool
+from bitcasa.drive import BitcasaDrive
+from bitcasa.globals import setup_logger
+
+pool = None
 
 def main():
-    setup_logger('BitcasaConsole')
+    global pool
+    drive = None
+
     parser = BitcasaParser()
     args = parser.parse_args()
-    drive = None
+    setup_logger('BitcasaConsole', config=args)
+
     if args.auth:
         try:
-            set_connection_params(args.username, args.password, AuthenticationManager)
-            connect()
-            drive = BitcasaDrive()
+            pool = ConnectionPool(config=args)
+            drive = BitcasaDrive(config=args, connection_pool=pool)
         except Exception as err:
             if args.pdb:
                 traceback.print_exc()
@@ -33,13 +37,15 @@ def main():
 
     if args.command == 'shell':
         import code
-        code.interact(local=dict(drive=drive, connection=connection,
-                                 args=args))
+        code.interact(local=dict(drive=drive, args=args, pool=pool))
     if args.command == 'list':
-        drive.root.list_items()
+        items = drive.root.list()
+        for item in items:
+            print item.name, item.id
 
 
 if __name__ == '__main__':
-    main()
-
-
+    try:
+        main()
+    finally:
+        pool.logout()

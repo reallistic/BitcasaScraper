@@ -6,6 +6,7 @@ class AuthenticationError(BitcasaError):
         self.sess = kwargs.pop('sess', None)
         self.username = kwargs.pop('username', None)
         self.password = kwargs.pop('password', None)
+        self.cookies = kwargs.pop('cookies', None)
         super(AuthenticationError, self).__init__(*args, **kwargs)
 
 class ConnectionError(BitcasaError):

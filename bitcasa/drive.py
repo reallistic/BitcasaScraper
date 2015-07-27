@@ -1,8 +1,9 @@
 import os
 
 from .connection import ConnectionPool
-from .exceptions import *
-from .globals import logger, BITCASA
+from .exceptions import BitcasaError
+from .globals import BITCASA
+from .logger import logger
 from .models import BitcasaFolder, BitcasaUser
 
 class BitcasaDrive(object):
@@ -10,9 +11,13 @@ class BitcasaDrive(object):
     root = None
     user = None
 
-    def __init__(self, config=None, auto_fetch_root=True, connection_pool=None):
+    def __init__(self, config=None, auto_fetch_root=True,
+                 connection_pool=None):
         self.config = config
-        self.connection_pool = connection_pool or ConnectionPool()
+        self.connection_pool = connection_pool
+        if not self.connection_pool:
+            self.connection_pool = ConnectionPool(config=config)
+
         self.get_user()
         if auto_fetch_root:
             self.fetch_drive()

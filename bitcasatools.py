@@ -7,51 +7,52 @@ if cur_version < pyssl_version:
 
 import traceback
 
-from bitcasa import BitcasaParser
-from bitcasa.authentication import AuthenticationManager
-from bitcasa.connection import ConnectionPool
-from bitcasa.drive import BitcasaDrive
-from bitcasa.globals import setup_logger
+from bitcasa import BitcasaParser, ConfigManager, BitcasaDrive
+from bitcasa.logger import setup_logger
 
 pool = None
+args = None
 
 def main():
-    global pool
+    global pool, args
+
     drive = None
-    args = None
+    config = None
 
     try:
         parser = BitcasaParser()
         args = parser.parse_args()
-        setup_logger('BitcasaConsole', config=args)
+        config = ConfigManager(args).get_config()
+        cli_args = args
+
+        setup_logger('BitcasaConsole', config=config)
+
+        if config.auth:
+            if args.command in ['shell', 'list']:
+                drive = BitcasaDrive(config=config)
+            else:
+                drive = BitcasaDrive(config=config, auto_fetch_root=False)
     except:
-        if args and args.pdb:
+        if config and config.pdb:
             traceback.print_exc()
-            cl_args = args
             import pdb; pdb.set_trace()
         else:
             raise
 
-    if args.auth:
-        try:
-            pool = ConnectionPool(config=args)
-            drive = BitcasaDrive(config=args, connection_pool=pool)
-        except Exception as err:
-            if args.pdb:
-                traceback.print_exc()
-                cl_args = args
-                import pdb; pdb.set_trace()
-            else:
-                raise
-
     if args.command == 'shell':
         import code
-        code.interact(local=dict(drive=drive, args=args, pool=pool))
+        code.interact(local=dict(drive=drive, config=config, pool=pool,
+                                 cli_args=args))
+
     if args.command == 'list':
         items = drive.root.list()
         for item in items:
             print item.name, item.id
 
+    if args.command == 'authenticate':
+        message = 'Username and password must be specified'
+        assert all((config.username, config.password)), message
+        pool._store_cookies(config.cookie_file)
 
 if __name__ == '__main__':
     try:
@@ -60,5 +61,5 @@ if __name__ == '__main__':
         if not isinstance(err, (SystemExit, KeyboardInterrupt)):
             traceback.print_exc()
     finally:
-        if pool:
+        if pool and not pool.using_cookie_file:
             pool.logout()

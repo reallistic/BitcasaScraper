@@ -11,3 +11,6 @@ class AuthenticationError(BitcasaError):
 
 class ConnectionError(BitcasaError):
     pass
+
+class ConfigError(BitcasaError):
+    pass

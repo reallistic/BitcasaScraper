@@ -1,6 +1,16 @@
 import os
 
-from .globals import BITCASA, logger
+from .globals import BITCASA
+from .logger import logger
+
+class SimpleObject(object):
+    def __init__(self, **kwargs):
+        self.update_data(**kwargs)
+
+    def update_data(self, **kwargs):
+        for key, val in kwargs.items():
+            setattr(self, key, val)
+
 
 class LaxObjectMetaClass(type):
     def __new__(mcs, name, bases, attrs):
@@ -25,7 +35,7 @@ class LaxObject(object):
     _keys = None
     def __init__(self, **kwargs):
         if not self._keys:
-            raise NotImplemented
+            raise NotImplementedError('Missing _keys')
 
         self.update_data(store_missing=True, **kwargs)
 

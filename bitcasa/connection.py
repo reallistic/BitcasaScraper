@@ -1,8 +1,12 @@
+import json
+import traceback
+
 from threading import Lock
 from Queue import Queue, Empty
 
 from .authentication import AuthenticationManager
-from .globals import logger
+from .exceptions import AuthenticationError
+from .logger import logger
 
 class ConnectionContext(object):
     _pool = None
@@ -31,6 +35,7 @@ class ConnectionContext(object):
 class ConnectionPool(object):
     auth_class = None
     max_connections = None
+    using_cookie_file = None
 
     _connection_stack = None
     _connections = None
@@ -43,6 +48,8 @@ class ConnectionPool(object):
                  max_connections=None, config=None, blocking=True):
         self._username = username or config.username
         self._password = password or config.password
+        if not all((self._username, self._password)):
+            self._cookies = self._cookies_from_file(config.cookie_file)
         self.max_connections = max_connections or config.max_connections
 
         self.auth_class = auth_class or AuthenticationManager
@@ -50,6 +57,30 @@ class ConnectionPool(object):
         self._connections = []
 
         self._connect_lock = Lock()
+
+    def _cookies_from_file(self, fp):
+        cookies = None
+        if not fp:
+            return None
+
+        try:
+            logger.debug('loading cookies from %s', fp.name)
+            fp.seek(0)
+            json_data = json.loads(fp.read())
+            self.using_cookie_file = True
+            return json_data
+        except Exception as err:
+            logger.debug('failed loading cookies from file. %s', err.message)
+
+    def _store_cookies(self, fp):
+        try:
+            fp.seek(0)
+            fp.truncate()
+            fp.write(json.dumps(self._cookies))
+            self.using_cookie_file = True
+        except:
+            traceback.print_exc()
+            raise AuthenticationError('Failed storing cookies to file')
 
     def _connect(self, username=None, password=None):
         if self._cookies and not all((username, password)):

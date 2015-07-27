@@ -1,3 +1,9 @@
+# App specific files
+bitcasa.ini
+downloads/
+bitcasa_login.png
+cookies
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -32,7 +32,8 @@ class ConfigManager(object):
                     val = open(val, 'a+')
                 if key in ['pdb', 'auth']:
                     val = config.getboolean(section, key)
-                if key in ['chunk_size', 'max_connections', 'max_depth']:
+                if key in ['chunk_size', 'max_connections', 'max_depth',
+                           'verbose']:
                     val = config.getint(section, key)
 
                 data[key] = val

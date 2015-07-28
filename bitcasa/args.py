@@ -26,7 +26,7 @@ class BitcasaParser(argparse.ArgumentParser):
                                               'bitcasa drive'))
 
         self.list_parser.add_argument('-d', '--max-depth', dest='max_depth',
-            type=int, default=0, help='Set the depth of the list traversal')
+            type=int, default=1, help='Set the depth of the list traversal')
 
     def create_shell_parser(self):
         self.shell_parser = self.actions.add_parser('shell',

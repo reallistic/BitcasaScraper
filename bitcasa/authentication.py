@@ -48,8 +48,6 @@ class AuthenticationManager(object):
         if not self._connected:
             kwargs.setdefault('cookies', self._cookies)
 
-        logger.debug('%s requesting url %s' % (self.id, url))
-
         resp = None
         error = None
         try:
@@ -82,8 +80,6 @@ class AuthenticationManager(object):
             kwargs.setdefault('cookies', self._cookies)
 
         url = BITCASA.url_from_endpoint(endpoint)
-
-        logger.debug('%s requesting url %s' % (self.id, url))
 
         error_message = 'Error connecting to drive.bitcasa.com. %s'
         response_data = {}

@@ -1,6 +1,9 @@
 import os
 
-from .connection import ConnectionPool
+from werkzeug.local import LocalProxy
+
+from .connection import connection_pool
+from .download import download_file
 from .exceptions import BitcasaError
 from .globals import BITCASA
 from .logger import logger
@@ -11,12 +14,8 @@ class BitcasaDrive(object):
     root = None
     user = None
 
-    def __init__(self, config=None, auto_fetch_root=True,
-                 connection_pool=None):
+    def __init__(self, config=None, auto_fetch_root=True):
         self.config = config
-        self.connection_pool = connection_pool
-        if not self.connection_pool:
-            self.connection_pool = ConnectionPool(config=config)
 
         self.get_user()
         if auto_fetch_root:
@@ -24,16 +23,13 @@ class BitcasaDrive(object):
 
     def get_user(self):
         if not self.user:
-            with self.connection_pool.pop() as conn:
-                response_data = conn.request(BITCASA.ENDPOINTS.user_account)
-            self.user = BitcasaUser.from_account_data(response_data)
+            response_data = self.make_request(BITCASA.ENDPOINTS.user_account)
+            self.user = BitcasaUser.from_account_data(response_data['result'])
         return self.user
 
     def fetch_drive(self):
-        with self.connection_pool.pop() as conn:
-            root_meta = conn.request(BITCASA.ENDPOINTS.root_folder)
-
-        self.root = BitcasaFolder.from_meta_data(root_meta['result'], self)
+        root_meta = self.make_request(BITCASA.ENDPOINTS.root_folder)
+        self.root = BitcasaFolder.from_meta_data(root_meta['result'])
         return self.root
 
     def make_download_url(self, bfile):
@@ -46,12 +42,7 @@ class BitcasaDrive(object):
         chunk_size = self.config.chunk_size or 1024 * 1024
 
         url = self.make_download_url(bfile)
-        with self.connection_pool.pop() as conn:
-            req = conn.make_download_request(url)
-            with open(destination, 'w+') as tmpfile:
-                for chunk in req.iter_content(chunk_size=chunk_size):
-                    tmpfile.write(chunk)
-            conn.request_lock.release()
+        return download_file(url, destination, chunk_size)
 
     def list(self, auto_fetch_drive=True):
         if not (auto_fetch_drive or self.root):
@@ -64,7 +55,19 @@ class BitcasaDrive(object):
 
     def make_request(self, *args, **kwargs):
 
-        with self.connection_pool.pop() as conn:
+        with connection_pool.pop() as conn:
             data = conn.request(*args, **kwargs)
 
         return data
+
+_drive = None
+def get_drive():
+    assert _drive, 'Drive not setup'
+
+    return _drive
+
+def setup_drive(*args, **kwargs):
+    global _drive
+    _drive = BitcasaDrive(*args, **kwargs)
+
+drive = LocalProxy(get_drive)

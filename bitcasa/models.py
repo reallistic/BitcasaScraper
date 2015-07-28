@@ -64,7 +64,6 @@ class BitcasaUser(LaxObject):
 
     @classmethod
     def from_account_data(cls, data):
-        data = data['result']
         user_data = data.get('user', {})
         account_data = data.get('account', {})
         session_data = user_data.get('session', {})
@@ -85,37 +84,46 @@ class BitcasaUser(LaxObject):
 class BitcasaItem(LaxObject):
 
     _keys = ['modified', 'created', 'id', 'name', 'parent_id',
-             'version', 'path', 'path_name', 'drive']
+             'version', 'path', 'path_name', 'level']
 
     def __repr__(self):
         return '<%s %s:%s>' % (self.__class__.__name__, self.id, self.name)
 
     @classmethod
-    def from_meta_data(cls, data, drive, parent=None, path=None):
+    def from_meta_data(cls, data, parent=None, path=None, level=0):
         if 'meta' in data:
             meta_data = data.get('meta', {})
         else:
             meta_data = data
 
-        app_data = meta_data.get('application_data')
+        app_data = meta_data.get('application_data', {})
 
         item = cls.trim_dict(meta_data)
         item['modified'] = meta_data.get('date_content_last_modified')
         item['created'] = meta_data.get('date_created')
 
         item['path_name'] = app_data.get('running_path_name')
-        item['drive'] = drive
+
+        if isinstance(parent, BitcasaItem):
+            item['level'] = parent.level + 1
+        else:
+            item['level'] = level
 
         if path:
             item['path'] = path
         else:
             if parent:
-                item['path'] = os.path.join(parent.path, meta_data.get('id'))
+                if isinstance(parent, BitcasaItem):
+                    item['path'] = os.path.join(parent.path,
+                                                meta_data.get('id'))
+                elif isinstance(parent, basestring):
+                    item['path'] = os.path.join(parent,
+                                                meta_data.get('id'))
             else:
                 item['path'] = os.path.join('/', meta_data.get('parent_id'),
                                             meta_data.get('id'))
 
-        item_cls = BitcasaItemFactory.class_from_data(meta_data, drive)
+        item_cls = BitcasaItemFactory.class_from_data(meta_data)
         return item_cls(**item)
 
     def __str__(self):
@@ -128,23 +136,25 @@ class BitcasaFile(BitcasaItem):
              'blid']
 
     @classmethod
-    def from_meta_data(cls, data, drive, parent=None, path=None):
+    def from_meta_data(cls, data, parent=None, path=None, level=0):
         # inject file data.
-        app_data = data.get('application_data')
+        app_data = data.get('application_data', {})
         nebula = app_data.get('_server', {}).get('nebula', {})
 
         data['nonce'] = nebula.get('nonce')
         data['blid'] = nebula.get('blid')
         data['digest'] = nebula.get('digest')
         data['payload'] = nebula.get('payload')
-        ins = super(BitcasaFile, cls).from_meta_data(data, drive,
+        ins = super(BitcasaFile, cls).from_meta_data(data,
                                                      parent=parent,
-                                                     path=path)
+                                                     path=path,
+                                                     level=level)
         return ins
 
     def download(self, destination_dir, name=None):
+        from . import drive
         destination = os.path.join(destination_dir, name or self.name)
-        self.drive.download_file(self, destination)
+        drive.download_file(self, destination)
 
 
 class BitcasaFolder(BitcasaItem):
@@ -153,7 +163,7 @@ class BitcasaFolder(BitcasaItem):
     items = None
 
     @classmethod
-    def from_meta_data(cls, data, drive, parent=None, path=None):
+    def from_meta_data(cls, data, parent=None, path=None, level=0):
         # Inject is_root.
         if 'meta' in data:
             meta_data = data.get('meta', {})
@@ -161,9 +171,10 @@ class BitcasaFolder(BitcasaItem):
             meta_data = data
 
         meta_data['is_root'] = (meta_data.get('type') == 'root')
-        ins = super(BitcasaFolder, cls).from_meta_data(data, drive,
+        ins = super(BitcasaFolder, cls).from_meta_data(data,
                                                        parent=parent,
-                                                       path=path)
+                                                       path=path,
+                                                       level=level)
 
         child_items = data.get('items')
         ins.items_from_data(child_items)
@@ -178,16 +189,18 @@ class BitcasaFolder(BitcasaItem):
             return
 
         for item in data:
-            bitcasa_item = BitcasaItemFactory.make_item(item, self.drive,
-                                                        parent=self)
+            bitcasa_item = BitcasaItemFactory.make_item(item, parent=self)
             self.items[bitcasa_item.id] = bitcasa_item
+
+    def get_full_url(self):
+        path = self.path.lstrip('/')
+        return os.path.join(BITCASA.ENDPOINTS.root_folder, path)
 
     def fetch_items(self, force=False):
         if not self.items or force:
-            path = self.path.lstrip('/')
-            url = os.path.join(BITCASA.ENDPOINTS.root_folder, path)
+            url = self.get_full_url()
             logger.debug('fetching folder: %s | %s', path, url)
-            with self.drive.connection_pool.pop() as conn:
+            with connection_pool.pop() as conn:
                 folder_meta = conn.request(url)
             self.items_from_data(folder_meta['result'].get('items'))
 
@@ -204,10 +217,10 @@ class BitcasaItemFactory(object):
                  'folder': BitcasaFolder,
                  'file': BitcasaFile}
     @classmethod
-    def class_from_data(cls, data, drive):
+    def class_from_data(cls, data):
         return cls.class_map.get(data.get('type'), BitcasaItem)
 
     @classmethod
-    def make_item(cls, data, drive, parent=None):
+    def make_item(cls, data, parent=None):
         item_class = cls.class_map.get(data.get('type'), BitcasaItem)
-        return item_class.from_meta_data(data, drive, parent=parent)
+        return item_class.from_meta_data(data, parent=parent)

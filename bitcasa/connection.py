@@ -4,6 +4,8 @@ import traceback
 from threading import Lock
 from Queue import Queue, Empty
 
+from werkzeug.local import LocalProxy
+
 from .authentication import AuthenticationManager
 from .exceptions import AuthenticationError
 from .logger import logger
@@ -19,12 +21,10 @@ class ConnectionContext(object):
 
     def __enter__(self):
         if self._valid:
-            logger.debug('%s entering context manager' % self.auth.id)
             return self.auth
 
     def __exit__(self, exc_type, exc_value, tb):
         if self._valid:
-            logger.debug('%s releasing connection' % self.auth.id)
             self._pool.push(self)
 
     def clear(self):
@@ -64,13 +64,12 @@ class ConnectionPool(object):
             return None
 
         try:
-            logger.debug('loading cookies from %s', fp.name)
             fp.seek(0)
             json_data = json.loads(fp.read())
             self.using_cookie_file = True
             return json_data
         except Exception as err:
-            logger.debug('failed loading cookies from file. %s', err.message)
+            logger.exception('failed loading cookies from file. %s', err.message)
 
     def _store_cookies(self, fp):
         try:
@@ -124,10 +123,22 @@ class ConnectionPool(object):
             if force or self.can_make_connection():
                 conn = ConnectionContext(self)
                 self._connections.append(conn)
-                logger.debug('%s making new connection' % conn.auth.id)
                 return conn
 
         return self._connection_stack.get()
 
     def push(self, conn):
         self._connection_stack.put(conn)
+
+_connection_pool = None
+def get_connection():
+    assert _connection_pool, 'Connection pool not setup'
+
+    return _connection_pool
+
+def setup_connection(*args, **kwargs):
+    global _connection_pool
+    connection_class = kwargs.pop('connection_class', ConnectionPool)
+    _connection_pool = connection_class(*args, **kwargs)
+
+connection_pool = LocalProxy(get_connection)

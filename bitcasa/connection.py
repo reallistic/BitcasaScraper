@@ -4,32 +4,10 @@ import traceback
 from threading import Lock
 from Queue import Queue, Empty
 
-from werkzeug.local import LocalProxy
-
 from .authentication import AuthenticationManager
+from .ctx import ConnectionContext
 from .exceptions import AuthenticationError
-from .logger import logger
-
-class ConnectionContext(object):
-    _pool = None
-    _valid = None
-
-    def __init__(self, pool):
-        self._pool = pool
-        self.auth = self._pool._connect()
-        self._valid = True
-
-    def __enter__(self):
-        if self._valid:
-            return self.auth
-
-    def __exit__(self, exc_type, exc_value, tb):
-        if self._valid:
-            self._pool.push(self)
-
-    def clear(self):
-        self._valid = False
-        self.auth = None
+from .globals import logger
 
 
 class ConnectionPool(object):
@@ -58,16 +36,17 @@ class ConnectionPool(object):
 
         self._connect_lock = Lock()
 
-    def _cookies_from_file(self, fp):
-        cookies = None
-        if not fp:
+    def _cookies_from_file(self, filename):
+        if not filename:
             return None
 
+        cookies = None
+
         try:
-            fp.seek(0)
-            json_data = json.loads(fp.read())
-            self.using_cookie_file = True
-            return json_data
+            with open(filename, 'r') as fp:
+                json_data = json.loads(fp.read())
+                self.using_cookie_file = True
+                return json_data
         except Exception as err:
             logger.exception('failed loading cookies from file. %s', err.message)
 
@@ -130,15 +109,5 @@ class ConnectionPool(object):
     def push(self, conn):
         self._connection_stack.put(conn)
 
-_connection_pool = None
-def get_connection():
-    assert _connection_pool, 'Connection pool not setup'
-
-    return _connection_pool
-
-def setup_connection(*args, **kwargs):
-    global _connection_pool
-    connection_class = kwargs.pop('connection_class', ConnectionPool)
-    _connection_pool = connection_class(*args, **kwargs)
-
-connection_pool = LocalProxy(get_connection)
+    def get_context(self):
+        return ConnectionContext(self)

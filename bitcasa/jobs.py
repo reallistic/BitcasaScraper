@@ -1,19 +1,23 @@
-from gevent import pool
-
+import gevent
 import functools
+import sys
 import time
 import uuid
 
-from werkzeug.local import LocalProxy
+from gevent import pool
+from gevent.event import Event
 
 from apscheduler.util import obj_to_ref
 
-from apscheduler.schedulers.gevent import GeventScheduler
+from apscheduler.schedulers.gevent import GeventScheduler as GeventSchedulerBase
+from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.executors.pool import BasePoolExecutor
 from apscheduler.executors.base import run_job
 
-from .logger import logger
+from .ctx import copy_current_app_ctx
+from .globals import logger, scheduler, _app_ctx_stack
+
 
 class GeventPoolExecutor(BasePoolExecutor):
     def __init__(self, max_workers=10):
@@ -33,7 +37,11 @@ class GeventPoolExecutor(BasePoolExecutor):
             else:
                 self._run_job_success(job.id, events)
 
-        g = self._pool.spawn(run_job, job, job._jobstore_alias, run_times,
+        @copy_current_app_ctx
+        def run_job_in_ctx(*args, **kwargs):
+            return run_job(*args, **kwargs)
+
+        g = self._pool.spawn(run_job_in_ctx, job, job._jobstore_alias, run_times,
                              self._logger.name)
         g.num = self.__greenlets_spawned
         g.link(callback)
@@ -51,6 +59,19 @@ class GeventPoolExecutor(BasePoolExecutor):
             self._pool.join()
 
         self._pool.join()
+
+
+class GeventScheduler(GeventSchedulerBase):
+    def start(self):
+        BaseScheduler.start(self)
+        self._event = Event()
+
+        @copy_current_app_ctx
+        def run_main_loop():
+            self._main_loop()
+
+        self._greenlet = gevent.spawn(run_main_loop)
+        return self._greenlet
 
 
 def async(jobstore):
@@ -75,34 +96,30 @@ def async(jobstore):
     return wrapper
 
 
-_scheduler = None
-
 def setup_scheduler(config=None):
-    global _scheduler
-
-    max_list_workers = 4
-    max_download_workers = 2
-    max_move_workers = 2
-    max_upload_workers = 2
+    list_workers = 4
+    download_workers = 4
+    move_workers = 2
+    upload_workers = 2
 
     total_data_workers = 0
 
     sqlite_uri = 'sqlite:///bitcasajobs.sqlite'
     if config:
+        if config.list_workers:
+            list_workers = config.list_workers
         """
-        if config.max_list_workers:
-            max_list_workers = config.max_list_workers
-        if config.max_upload_workers:
-            max_upload_workers = config.max_upload_workers
-        if config.max_move_workers:
-            max_move_workers = config.max_move_workers
-        if config.max_download_workers:
-            max_download_workers = config.max_download_workers
+        if config.upload_workers:
+            upload_workers = config.upload_workers
+        """
+        if config.move_workers:
+            move_workers = config.move_workers
+        if config.download_workers:
+            download_workers = config.download_workers
         if config.sqlite_uri:
             sqlite_uri = config.sqlite_uri
-        """
 
-        total_data_workers = max_list_workers + max_download_workers
+        total_data_workers = list_workers + download_workers
         if (config.max_connections and
             total_data_workers > config.max_connections):
             logger.warn('Using more workers than available connections: %s/%s',
@@ -116,17 +133,10 @@ def setup_scheduler(config=None):
                                             tablename='move_jobs'),
                  'download': SQLAlchemyJobStore(url=sqlite_uri,
                                                 tablename='download_jobs')}
-    executors = {'list': GeventPoolExecutor(max_list_workers),
-                 'download': GeventPoolExecutor(max_download_workers),
-                 'move': GeventPoolExecutor(max_move_workers),
-                 'upload': GeventPoolExecutor(max_upload_workers)}
+    executors = {'list': GeventPoolExecutor(list_workers),
+                 'download': GeventPoolExecutor(download_workers),
+                 'move': GeventPoolExecutor(move_workers),
+                 'upload': GeventPoolExecutor(upload_workers)}
     job_defaults = {'coalesce': False, 'max_instances': 1}
-    _scheduler = GeventScheduler(jobstores=jobstores, executors=executors,
-                                job_defaults=job_defaults)
-    
-
-
-def get_scheduler():
-    return _scheduler
-
-scheduler = LocalProxy(get_scheduler)
+    return GeventScheduler(jobstores=jobstores, executors=executors,
+                           job_defaults=job_defaults)

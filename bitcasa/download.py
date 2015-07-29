@@ -1,17 +1,11 @@
-from apscheduler.events import EVENT_SCHEDULER_SHUTDOWN
-from werkzeug.local import LocalProxy
-
-from .connection import connection_pool
-from .globals import BITCASA
-from .jobs import scheduler, async
-from .logger import logger
+from .globals import BITCASA, logger, scheduler, connection_pool
+from .jobs import async
 from .models import BitcasaFile, BitcasaFolder
 
 
 @async(jobstore='list')
 def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
                 parent=None, print_files=False):
-    global _files
     if folder:
         url = folder.get_full_url()
     elif not url:
@@ -30,9 +24,9 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
     if print_files:
         print '%s%s - %s' % (''.join(['   ']*level), folder.name, folder.id)
     results = []
-    items = folder.items.items()
-    items.sort(key=lambda item: item[1].name.lower())
-    for _, item in items:
+    items = folder.items.values()
+    items.sort(key=lambda item: item.name.lower())
+    for item in items:
         if not job_id:
             results.append(item)
 
@@ -67,13 +61,13 @@ def download_file(url, destination, chunk_size, move_to=None, job_id=False):
 
     if move_to:
         if job_id:
-            move_file.async(destination, move_to)
+            _move_file.async(destination, move_to)
         else:
-            move_file(destination, move_to)
+            _move_file(destination, move_to)
 
 
 @async(jobstore='move')
-def move_file(src, destination, job_id=None):
+def _move_file(src, destination, job_id=None):
     with open(destination, 'rb') as srcfile, open(move_to, 'wb') as destfile:
         while not scheduler or scheduler.running:
             piece = srcfile.read(1024)

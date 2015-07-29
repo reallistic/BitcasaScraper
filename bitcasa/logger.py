@@ -1,7 +1,5 @@
 import logging
 
-from werkzeug.local import LocalProxy
-
 def _configure_logger(l, config=None):
     maxsize = 1 * 1024* 1024 #1mb
     log_level = logging.ERROR
@@ -14,10 +12,8 @@ def _configure_logger(l, config=None):
         elif config.verbose > 1:
             log_level = logging.DEBUG
 
-        if False:
-            logfile = './logs/bitcasadrive.log'
-            if config.logfile:
-                logfile = config.logfile
+        if config.log_file:
+            logfile = config.log_file
             filehandler = RotatingFileHandler(logfile, maxBytes=maxsize, backupCount=5)
             filehandler.setLevel(log_level)
             filehandler.setFormatter(lFormat)
@@ -25,7 +21,7 @@ def _configure_logger(l, config=None):
             if os.path.getsize(logfile) > maxsize/2:
                 l.handlers[0].doRollover()
 
-    if True: # config.console_logging.
+    if not config.quiet:
         consolehandler = logging.StreamHandler()
         consolehandler.setLevel(log_level)
         consolehandler.setFormatter(lFormat)
@@ -41,15 +37,8 @@ def setup_scheduler_loggers(config=None):
             _configure_logger(l, config=config)
 
 def setup_logger(name=None, config=None):
-    global _logger
-    if not _logger:
+    logger = logging.getLogger(name)
+    _configure_logger(logger, config=config)
+    logger.debug('Logging loaded')
 
-        _logger = logging.getLogger(name)
-        _configure_logger(_logger, config=config)
-        _logger.info('Logging loaded')
-
-    return _logger
-
-_logger = None
-
-logger = LocalProxy(setup_logger)
+    return logger

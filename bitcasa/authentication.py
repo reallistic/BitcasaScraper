@@ -6,8 +6,7 @@ from uuid import uuid4
 from threading import Lock
 
 from .exceptions import AuthenticationError, ConnectionError
-from .globals import BITCASA
-from .logger import logger
+from .globals import BITCASA, logger
 
 class AuthenticationManager(object):
     _session = None

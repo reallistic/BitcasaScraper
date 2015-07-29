@@ -1,13 +1,10 @@
 import os
 
-from werkzeug.local import LocalProxy
-
-from .connection import connection_pool
 from .download import download_file
 from .exceptions import BitcasaError
-from .globals import BITCASA
-from .logger import logger
+from .globals import BITCASA, connection_pool, logger
 from .models import BitcasaFolder, BitcasaUser
+
 
 class BitcasaDrive(object):
     config = None
@@ -59,15 +56,3 @@ class BitcasaDrive(object):
             data = conn.request(*args, **kwargs)
 
         return data
-
-_drive = None
-def get_drive():
-    assert _drive, 'Drive not setup'
-
-    return _drive
-
-def setup_drive(*args, **kwargs):
-    global _drive
-    _drive = BitcasaDrive(*args, **kwargs)
-
-drive = LocalProxy(get_drive)

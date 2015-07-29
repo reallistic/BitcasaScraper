@@ -1,7 +1,7 @@
 import os
 
-from .globals import BITCASA
-from .logger import logger
+from .globals import BITCASA, logger, drive
+
 
 class SimpleObject(object):
     def __init__(self, **kwargs):
@@ -152,7 +152,6 @@ class BitcasaFile(BitcasaItem):
         return ins
 
     def download(self, destination_dir, name=None):
-        from . import drive
         destination = os.path.join(destination_dir, name or self.name)
         drive.download_file(self, destination)
 

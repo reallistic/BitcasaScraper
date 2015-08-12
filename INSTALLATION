@@ -1,0 +1,7 @@
+# apt-get install qt5-default libqt5webkit5-dev build-essential python-lxml python-pip xvfb
+
+# apt-get install libffi-dev
+# apt-get install python-dev
+
+# apt-get install libqtwebkit-dev
+# apt-get install libxml2-dev libxslt-dev

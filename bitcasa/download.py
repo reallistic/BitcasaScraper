@@ -1,6 +1,6 @@
 from .globals import BITCASA, logger, scheduler, connection_pool
 from .jobs import async
-from .models import BitcasaFile, BitcasaFolder
+from .models import BitcasaItemFactory
 
 
 @async(jobstore='list')
@@ -18,7 +18,8 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
         child_items = data['result'].get('items')
         folder.items_from_data(child_items)
     else:
-        folder = BitcasaFolder.from_meta_data(data['result'], parent=parent,
+        folder = BitcasaItemFactory.make_item(data['result'],
+                                              parent=parent,
                                               level=level)
 
     if print_files:
@@ -30,7 +31,8 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
         if not job_id:
             results.append(item)
 
-        if level + 1 < max_depth and isinstance(item, BitcasaFolder):
+        if (level + 1 < max_depth and
+            isinstance(item, BitcasaItemFactory.get('BitcasaFolder'))):
             if job_id:
                 list_folder.async(url=item.get_full_url(), level=level+1,
                                   max_depth=max_depth, parent=folder.path,

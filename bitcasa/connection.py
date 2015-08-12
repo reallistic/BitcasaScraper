@@ -50,11 +50,10 @@ class ConnectionPool(object):
         except Exception as err:
             logger.exception('failed loading cookies from file. %s', err.message)
 
-    def _store_cookies(self, fp):
+    def _store_cookies(self, filename):
         try:
-            fp.seek(0)
-            fp.truncate()
-            fp.write(json.dumps(self._cookies))
+            with open(filename, 'w+') as fp:
+                fp.write(json.dumps(self._cookies))
             self.using_cookie_file = True
         except:
             traceback.print_exc()

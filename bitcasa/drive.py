@@ -3,7 +3,8 @@ import os
 from .download import download_file
 from .exceptions import BitcasaError
 from .globals import BITCASA, connection_pool, logger
-from .models import BitcasaFolder, BitcasaUser
+from .models import BitcasaUser
+from .models import BitcasaItemFactory
 
 
 class BitcasaDrive(object):
@@ -26,7 +27,7 @@ class BitcasaDrive(object):
 
     def fetch_drive(self):
         root_meta = self.make_request(BITCASA.ENDPOINTS.root_folder)
-        self.root = BitcasaFolder.from_meta_data(root_meta['result'])
+        self.root = BitcasaItemFactory.from_meta_data(root_meta['result'])
         return self.root
 
     def make_download_url(self, bfile):

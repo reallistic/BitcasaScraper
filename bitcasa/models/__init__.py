@@ -1,3 +1,4 @@
+from .base import BitcasaItem , BitcasaItemFactory
 from .file import BitcasaFile
 from .folder import BitcasaFolder
 from .helpers import LaxObject, SimpleObject

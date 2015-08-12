@@ -4,6 +4,7 @@ import requests
 from requests import RequestException
 from uuid import uuid4
 from threading import Lock
+from xvfbwrapper import Xvfb
 
 from .exceptions import AuthenticationError, ConnectionError
 from .globals import BITCASA, logger
@@ -107,6 +108,8 @@ class AuthenticationManager(object):
         return response_data.copy()
 
     def set_cookies(self):
+        vdisplay = Xvfb()
+        vdisplay.start()
         sess = dryscrape.Session(base_url=BITCASA.BASE_URL)
 
         sess.set_attribute('auto_load_images', False)
@@ -120,9 +123,14 @@ class AuthenticationManager(object):
         submit.click()
 
         # wait for the page to load.
-        listing_items = sess.at_css('div.listing-items', timeout=5)
-        if not listing_items:
+        account_dropdown = sess.at_css('div.account-dropdown', timeout=10)
+        if not account_dropdown:
             sess.render('bitcasa_login.png')
+
+            # logout just in case.
+            sess.visit(BITCASA.ENDPOINTS.logout)
+
+            vdisplay.stop()
             raise AuthenticationError('login failed', sess=sess,
                                       username=self._username,
                                       password=self._password)
@@ -140,6 +148,7 @@ class AuthenticationManager(object):
             parsed_cookies[parsed_cookie[0]] = parsed_cookie[1]
 
         self._cookies = parsed_cookies
+        vdisplay.stop()
 
     def get_cookies(self):
         return self._cookies

@@ -1,26 +1,66 @@
 import os
 
-from .helpers import LaxObject
+from .helpers import LaxObject, LaxObjectMetaClass
 
 
-_registered_models = {}
 
-class BitcasaItemMeta(type):
+class BitcasaItemFactory(object):
+
+    _class_map = {}
+
+    @classmethod
+    def register_model(cls, model, data_type=None):
+        cls.class_map[model.__name__] = model
+        if data_type:
+            cls.class_map[data_type] = model
+
+    @classmethod
+    def class_map(cls, key, default=None):
+        if default is not None:
+            return cls._class_map.get(key, default)
+        else:
+            return cls._class_map[key]
+
+    @classmethod
+    def class_from_data(cls, data):
+        return cls.class_map(data.get('type'), BitcasaItem)
+
+    @classmethod
+    def make_item(cls, data, parent=None):
+        item_class = cls.class_map.get(data.get('type'), BitcasaItem)
+        ins = item_class.from_meta_data(data, parent=parent)
+
+        if isinstance(ins, cls.class_map('BitcasaFolder')) and data.get('items'):
+            ins.items.update(cls.items_from_data(data.get('items'), ins))
+
+    @classmethod
+    def items_from_data(self, data, parent):
+        items = {}
+
+        if not data:
+            return items
+
+        for item in data:
+            bitcasa_item = BitcasaItemFactory.make_item(item, parent=parent)
+            items[bitcasa_item.id] = bitcasa_item
+
+
+class BitcasaItemMetaClass(LaxObjectMetaClass):
     def __new__(mcs, name, bases, attrs):
-        global _registered_models
 
         for base in bases:
-            if base.__class__ == type:
-                continue
-            if base.__class__.__name__ in _registered_models:
+            if not hasattr(base, '_data_types '):
                 continue
 
-            _registered_models[base.__class__.__name__] = base
+            for data_type in base._data_types:
+                BitcasaItemFactory.register_model(base, data_type)
 
-        return type.__new__(mcs, name, bases, attrs)
+        return super(BitcasaItemMetaClass, mcs).__new__(mcs, name, bases, attrs)
 
 
 class BitcasaItem(LaxObject):
+
+    __metaclass__ = BitcasaItemMetaClass
 
     _keys = ['modified', 'created', 'id', 'name', 'parent_id',
              'version', 'path', 'path_name', 'level']
@@ -68,19 +108,3 @@ class BitcasaItem(LaxObject):
 
     def __str__(self):
         return '<%s>' % (self.id or 'root')
-
-
-
-class BitcasaItemFactory(object):
-    @classmethod
-    def class_from_data(cls, data):
-        class_map = {'root': _registered_models['BitcasaFolder'],
-                     'folder': _registered_models['BitcasaFolder'],
-                     'file': _registered_models['BitcasaFile']}
-        return class_map.get(data.get('type'), BitcasaItem)
-
-    @classmethod
-    def make_item(cls, data, parent=None):
-        item_class = cls.class_map.get(data.get('type'), BitcasaItem)
-        return item_class.from_meta_data(data, parent=parent)
-

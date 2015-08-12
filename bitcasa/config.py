@@ -20,7 +20,6 @@ class ConfigManager(object):
         cli_args = cli_args.__dict__.copy()
 
         self.config = Config(**self.get_defaults())
-        print self.config.__dict__
         self.cli_args = cli_args
 
         cli_config_file = cli_args.pop('config_file', None)
@@ -29,12 +28,10 @@ class ConfigManager(object):
         if self.config_file:
             data = self.read_config()
             self.config.update_data(**data)
-            print self.config.__dict__
 
         updated = dict([(key, val) for key, val in cli_args.items()
                         if key not in self.config or val is not None])
         self.config.update_data(**updated)
-        print self.config.__dict__
 
     @classmethod
     def get_defaults(cls):

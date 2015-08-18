@@ -5,3 +5,8 @@
 
 # apt-get install libqtwebkit-dev
 # apt-get install libxml2-dev libxslt-dev
+#
+#
+# WINDOWS (cygwin):
+# python-pyqt4
+# # Make a symbolic link from the global pyqt4 to the virtualenv one if applicable.

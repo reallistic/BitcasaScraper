@@ -1,10 +1,11 @@
-import dryscrape
+import logging
 import requests
 
 from requests import RequestException
 from uuid import uuid4
 from threading import Lock
-from xvfbwrapper import Xvfb
+
+from ghost import Ghost
 
 from .exceptions import AuthenticationError, ConnectionError
 from .globals import BITCASA, logger
@@ -108,29 +109,31 @@ class AuthenticationManager(object):
         return response_data.copy()
 
     def set_cookies(self):
-        vdisplay = Xvfb()
-        vdisplay.start()
-        sess = dryscrape.Session(base_url=BITCASA.BASE_URL)
 
-        sess.set_attribute('auto_load_images', False)
-        sess.visit(BITCASA.ENDPOINTS.login)
+        ghost = Ghost(log_level=logging.DEBUG)
+        full_url = os.path.join(BITCASA.BASE_URL,
+                                BITCASA.ENDPOINTS.login.lstrip('/'))
+        page, res = ghost.open(full_url)
+        import pdb; pdb.set_trace()
 
-        username = sess.at_xpath('//input[@name="user"]')
-        password = sess.at_xpath('//input[@name="password"]')
-        username.set(self._username)
-        password.set(self._password)
-        submit = sess.at_xpath('//input[@type="submit"]')
-        submit.click()
+        result, res = ghost.set_field_value('input[name="user"]',
+                                            self._username)
+        result, res = ghost.set_field_value('input[name="password"]',
+                                            self._password)
+
+        result, res = ghost.click('input[type="submit"]')
+        page, resources = ghost.wait_for_page_loaded()
 
         # wait for the page to load.
-        account_dropdown = sess.at_css('div.account-dropdown', timeout=10)
-        if not account_dropdown:
-            sess.render('bitcasa_login.png')
+        result, resources = ghost.wait_for_selector('div.account-dropdown', timeout=10)
+        if not result:
+            ghost.capture_to('bitcasa_login.png')
 
             # logout just in case.
-            sess.visit(BITCASA.ENDPOINTS.logout)
+            full_url = os.path.join(BITCASA.BASE_URL,
+                                    BITCASA.ENDPOINTS.logout.lstrip('/'))
+            page, res = ghost.open(full_url)
 
-            vdisplay.stop()
             raise AuthenticationError('login failed', sess=sess,
                                       username=self._username,
                                       password=self._password)
@@ -139,7 +142,7 @@ class AuthenticationManager(object):
         self._username = None
         self._password = None
 
-        cookies = sess.cookies()
+        cookies = ghost.cookies
 
         parsed_cookies = {}
         for cookie in cookies:
@@ -148,7 +151,6 @@ class AuthenticationManager(object):
             parsed_cookies[parsed_cookie[0]] = parsed_cookie[1]
 
         self._cookies = parsed_cookies
-        vdisplay.stop()
 
     def get_cookies(self):
         return self._cookies

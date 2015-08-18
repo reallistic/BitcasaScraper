@@ -1,6 +1,3 @@
-import json
-import traceback
-
 from threading import Lock
 from Queue import Queue, Empty
 
@@ -55,8 +52,8 @@ class ConnectionPool(object):
             with open(filename, 'w+') as fp:
                 fp.write(json.dumps(self._cookies))
             self.using_cookie_file = True
-        except:
-            traceback.print_exc()
+        except Exception as err:
+            logger.exception('failed storing cookies to file. %s', err.message)
             raise AuthenticationError('Failed storing cookies to file')
 
     def _connect(self, username=None, password=None):
@@ -67,6 +64,8 @@ class ConnectionPool(object):
                 username = self._username
             if not password:
                 password = self._password
+            assert all((username, password)), ('Missing username,password or '
+                                               'cookies. No way to connect')
             auth = self.auth_class(username, password)
             self._cookies = auth.get_cookies()
 

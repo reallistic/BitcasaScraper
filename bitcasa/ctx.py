@@ -9,29 +9,43 @@ class BitcasaDriveAppContext(object):
     drive = None
     logger = None
     scheduler = None
+    _is_setup = None
 
     def __init__(self, app, _connection_pool=None, _drive=None, _logger=None,
                  _scheduler=None):
+        self._is_setup  = False
         self.app = app
-        if _connection_pool:
-            self.connection_pool = _connection_pool
-        else:
-            self.connection_pool = app.setup_connection_pool()
-
-        if _drive:
-            self.drive = _drive
-
         if _logger:
             self.logger = _logger
         else:
             self.logger = app.setup_logger()
 
+        top = _app_ctx_stack.top
+        # Give the setup functions a context so they can use the logger.
+        if not top:
+            with self:
+                self._setup(_connection_pool, _drive, _scheduler)
+        else:
+            self._setup(_connection_pool, _drive, _scheduler)
+
+    def _setup(self, _connection_pool, _drive, _scheduler):
+        if _connection_pool:
+            self.connection_pool = _connection_pool
+        else:
+            self.connection_pool = self.app.setup_connection_pool()
+
+        if _drive:
+            self.drive = _drive
+
         if _scheduler:
             self.scheduler = _scheduler
         else:
-            self.scheduler = app.setup_scheduler()
+            self.scheduler = self.app.setup_scheduler()
 
         self.logger.warn('finished ctx setup')
+
+        self._is_setup  = True
+
 
     def copy(self):
         return self.__class__(self.app, self.connection_pool, self.drive,
@@ -49,10 +63,8 @@ class BitcasaDriveAppContext(object):
     def __enter__(self):
         self.push()
 
-        if not self.drive:
+        if not self.drive and self._is_setup:
             self.drive = self.app.setup_drive()
-
-        self.logger.warn('pushed app ctx')
         return self
 
     def __exit__(self, exc_type, exc_value, tb):
@@ -64,7 +76,7 @@ class BitcasaDriveAppContext(object):
             self.connection_pool.logout()
 
         self.pop()
-        self.logger.warn('popped app ctx')
+        self.logger.debug('popped app ctx')
         if exception_raised:
             traceback.print_exception(exc_type, exc_value, tb)
             if pdb:

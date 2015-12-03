@@ -1,0 +1,11 @@
+INSTALL
+==============
+
+
+
+# Mac OS X (El Capitan)
+
+ - Install (homebrew)[http://brew.sh]
+ - Install qt `brew install qt`
+ - Install openssl `brew install openssl`
+ - Force link openssl `brew link openssl --force` (*NOTE* force can be dangerous. You were warned)

@@ -10,28 +10,31 @@ class BitcasaDriveAppContext(object):
     logger = None
     scheduler = None
 
+    logout_on_exit = None
+
     def __init__(self, app, _connection_pool=None, _drive=None, _logger=None,
                  _scheduler=None):
         self.app = app
-        if _connection_pool:
-            self.connection_pool = _connection_pool
-        else:
-            self.connection_pool = app.setup_connection_pool()
-
-        if _drive:
-            self.drive = _drive
 
         if _logger:
             self.logger = _logger
         else:
             self.logger = app.setup_logger()
 
+        if _connection_pool:
+            self.connection_pool = _connection_pool
+        #else:
+        #    self.connection_pool = app.setup_connection_pool()
+
+        if _drive:
+            self.drive = _drive
+
         if _scheduler:
             self.scheduler = _scheduler
-        else:
-            self.scheduler = app.setup_scheduler()
+        #else:
+        #    self.scheduler = app.setup_scheduler()
 
-        self.logger.warn('finished ctx setup')
+        self.logout_on_exit = True
 
     def copy(self):
         return self.__class__(self.app, self.connection_pool, self.drive,
@@ -49,22 +52,26 @@ class BitcasaDriveAppContext(object):
     def __enter__(self):
         self.push()
 
+        if not self.connection_pool:
+            self.connection_pool = self.app.setup_connection_pool()
+
+        if not self.scheduler:
+            self.scheduler = self.app.setup_scheduler()
+
         if not self.drive:
             self.drive = self.app.setup_drive()
 
-        self.logger.warn('pushed app ctx')
         return self
 
     def __exit__(self, exc_type, exc_value, tb):
         exception_raised = exc_type is not None
         pdb = self.app.config is not None and self.app.config.pdb
 
-        if (self.connection_pool and
+        if (self.logout_on_exit and self.connection_pool and
             not self.connection_pool.using_cookie_file):
             self.connection_pool.logout()
 
         self.pop()
-        self.logger.warn('popped app ctx')
         if exception_raised:
             traceback.print_exception(exc_type, exc_value, tb)
             if pdb:
@@ -103,6 +110,7 @@ def copy_current_app_ctx(f):
         raise RuntimeError(_app_ctx_err_msg)
 
     appctx = top.copy()
+    appctx.logout_on_exit = False
     def wrapper(*args, **kwargs):
         with appctx:
             return f(*args, **kwargs)

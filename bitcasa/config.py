@@ -20,7 +20,6 @@ class ConfigManager(object):
         cli_args = cli_args.__dict__.copy()
 
         self.config = Config(**self.get_defaults())
-        print self.config.__dict__
         self.cli_args = cli_args
 
         cli_config_file = cli_args.pop('config_file', None)
@@ -29,25 +28,33 @@ class ConfigManager(object):
         if self.config_file:
             data = self.read_config()
             self.config.update_data(**data)
-            print self.config.__dict__
 
         updated = dict([(key, val) for key, val in cli_args.items()
                         if key not in self.config or val is not None])
         self.config.update_data(**updated)
-        print self.config.__dict__
 
     @classmethod
     def get_defaults(cls):
         defaults = dict(auth=True, pdb=False, move_workers=4, list_workers=4,
-                        download_workers=4,max_depth=1, cookie_file='./cookies',
-                        chunk_size=1024*1024, config_file='./bitcasa.ini',
+                        download_workers=4, max_depth=1,
+                        cookie_file='./cookies', verbose=0,
+                        chunk_size=None, config_file='./bitcasa.ini',
                         quiet=False, download_folder='./downloads',
-                        sqlite_uri='sqlite:///bitcasajobs.sqlite')
+                        jobs_uri='sqlite:///bitcasajobs.sqlite',
+                        results_uri='sqlite:///bitcasaresults.sqlite')
         return defaults
 
     def _read_sections(self, config):
         data = {}
-        for section in config.sections():
+        sections = []
+
+        if config.has_section('bitcasa'):
+            sections.append('bitcasa')
+
+        if config.has_section(self.cli_args.get('command')):
+            sections.append(self.cli_args.get('command'))
+
+        for section in sections:
             for key, val in config.items(section):
                 dash_key = key.replace('-', '_')
                 if val.lower() in ['true', 'false']:

@@ -13,7 +13,7 @@ class BITCASA(object):
     BASE_URL = 'https://drive.bitcasa.com'
 
     class ENDPOINTS(object):
-        download = 'download/v2'
+        download = '/portal/v2/files/'
         login = '/login'
         logout = '/portal/logout'
         user_account = '/portal/useraccount'
@@ -28,10 +28,8 @@ def _get_app_attr(name):
     top = _app_ctx_stack.top
     if top is None:
         raise RuntimeError(_app_ctx_err_msg)
-    top.logger.warn('got attr %s from top', name)
 
     return getattr(top, name)
-
 
 _app_ctx_stack = LocalStack()
 connection_pool = LocalProxy(partial(_get_app_attr, 'connection_pool'))

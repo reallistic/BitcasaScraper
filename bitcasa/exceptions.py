@@ -14,3 +14,6 @@ class ConnectionError(BitcasaError):
 
 class ConfigError(BitcasaError):
     pass
+
+class SizeMismatchError(BitcasaError):
+    pass

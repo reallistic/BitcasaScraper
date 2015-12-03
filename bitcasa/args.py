@@ -14,12 +14,17 @@ class BitcasaParser(argparse.ArgumentParser):
         self.create_base_parser()
         self.create_iobase_parser()
         self.create_authentication_parser()
+        self.create_logout_parser()
         self.create_action_parsers()
         self.create_shell_parser()
 
     def create_authentication_parser(self):
         self.authentication_parser = self.actions.add_parser('authenticate',
             parents=[self.base_parser], help='Store bitcasa authentication')
+
+    def create_logout_parser(self):
+        self.logout_parser = self.actions.add_parser('logout',
+            parents=[self.base_parser], help='Remove bitcasa authentication')
 
     def create_action_parsers(self):
         self.list_parser = self.actions.add_parser('list',
@@ -67,8 +72,12 @@ class BitcasaParser(argparse.ArgumentParser):
             dest='bitcasa_folder',
             help='Set the base64 folder path to start list/download')
 
-        self.iobase_parser.add_argument('--sqlite-uri', dest='sqlite_uri',
-            help=('sqlite connection string for SQLAlchemy to connect. '
+        self.iobase_parser.add_argument('--jobs-uri', dest='jobs_uri',
+            help=('sqlite connection string to store jobs. '
+                  '(default: sqlite:///bitcasajobs.sqlite'))
+
+        self.iobase_parser.add_argument('--results-uri', dest='results_uri',
+            help=('sqlite connection string to store job results. '
                   '(default: sqlite:///bitcasajobs.sqlite'))
 
         self.iobase_parser.add_argument('--list-workers',

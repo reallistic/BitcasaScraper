@@ -39,28 +39,44 @@ class AuthenticationManager(object):
             data = {'csrf_token': self._cookies.get('tkey_csrf0portal')}
             self.request(BITCASA.ENDPOINTS.logout, method='POST', data=data)
 
-    def make_download_request(self, url, ignore_session_state=False):
+    def make_download_request(self, endpoint, seek=None,
+                              ignore_session_state=False):
         self.request_lock.acquire()
         if not ignore_session_state:
             self.assert_valid_session()
 
-        if not self._connected:
-            kwargs.setdefault('cookies', self._cookies)
-
         resp = None
         error = None
+        headers = None
+        cookies = None
+        response_data = {}
+
+        if not self._connected:
+            cookies = self._cookies
+
+        url = BITCASA.url_from_endpoint(endpoint)
+
+        if seek:
+            headers = {'Range': 'bytes=%s-' % seek}
+            logger.debug('Requesting url with seek: %s %s', seek, url)
+        else:
+            logger.debug('Requesting url %s %s', seek, url)
+
         try:
-            resp = self._session.get(url, stream=True, timeout=120)
+            resp = self._session.get(url, stream=True, timeout=60,
+                                     headers=headers, cookies=cookies)
             resp.raise_for_status()
-        except (ValueError, RequestException):
-            error = str(resp.status_code) if resp else 'unknown'
+        except (ValueError, RequestException) as e:
+            error = resp.content[:30] if resp is not None else e
+            logger.exception('%s - %s', error, url)
 
         if error is not None:
             if error == 'unauthorized':
                 self._connected = False
 
             self.request_lock.release()
-            raise ConnectionError(error_message % response_data.get('error'))
+            message = 'Error making download request %s'
+            raise ConnectionError(message % error)
 
         if not self._connected:
             self._connected = True
@@ -83,13 +99,14 @@ class AuthenticationManager(object):
         error_message = 'Error connecting to drive.bitcasa.com. %s'
         response_data = {}
         resp = None
+        logger.debug('Requesting url %s', url)
         try:
             resp = self._session.request(method.upper(), url, **kwargs)
-            resp.raise_for_status()
             response_data = resp.json()
+            resp.raise_for_status()
         except (ValueError, RequestException):
-            error_code = str(resp.status_code) if resp else 'unknown'
-            response_data.setdefault('error', error_code)
+            error = resp.content if resp is not None else 'unknown'
+            response_data.setdefault('error', error)
 
         error = response_data.get('error')
         if error is not None:

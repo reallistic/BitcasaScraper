@@ -1,6 +1,13 @@
 import os
 
+from sqlalchemy import Column, ForeignKey, types
+from sqlalchemy.orm import backref, relationship
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm.collections import attribute_mapped_collection
+
 from .globals import BITCASA, logger, drive
+
+Base = declarative_base()
 
 
 class SimpleObject(object):
@@ -81,10 +88,34 @@ class BitcasaUser(LaxObject):
 
         return cls(**user)
 
-class BitcasaItem(LaxObject):
+class BitcasaItem(Base):
 
-    _keys = ['modified', 'created', 'id', 'name', 'parent_id',
-             'version', 'path', 'path_name', 'level']
+    __tablename__ = 'drive'
+    id = Column(types.Text(), primary_key=True)
+    parent_id = Column(types.Text(), ForeignKey(id))
+    name = Column(types.Text())
+    modified = Column(types.Integer)
+    created = Column(types.Integer)
+    version = Column(types.Integer)
+    path_name = Column(types.Text())
+    path = Column(types.Text())
+    level = Column(types.Integer)
+    extension = Column(types.Text())
+    mime = Column(types.Text())
+    size = Column(types.Integer)
+    nonce = Column(types.Text())
+    payload = Column(types.Text())
+    digest = Column(types.Text())
+    blid = Column(types.Text())
+    is_root = Column(types.Boolean())
+
+    children = relationship('BitcasaItem',
+                            cascade='all, delete-orphan',
+                            backref=backref('parent', remote_side=id),
+                            collection_class=attribute_mapped_collection('id'))
+
+    # _keys = ['modified', 'created', 'id', 'name', 'parent_id',
+    #          'version', 'path', 'path_name', 'level']
 
     def __repr__(self):
         return '<%s %s:%s>' % (self.__class__.__name__, self.id, self.name)
@@ -98,7 +129,12 @@ class BitcasaItem(LaxObject):
 
         app_data = meta_data.get('application_data', {})
 
-        item = cls.trim_dict(meta_data)
+        item = {}
+        item['name'] = meta_data.get('name')
+        item['parent_id'] = meta_data.get('parent_id')
+        item['id'] = meta_data.get('id')
+        item['version'] = meta_data.get('version')
+
         item['modified'] = meta_data.get('date_content_last_modified')
         item['created'] = meta_data.get('date_created')
 
@@ -132,23 +168,23 @@ class BitcasaItem(LaxObject):
 
 class BitcasaFile(BitcasaItem):
 
-    _keys = ['extension', 'mime', 'size', 'nonce', 'payload', 'digest',
-             'blid']
-
     @classmethod
     def from_meta_data(cls, data, parent=None, path=None, level=0):
         # inject file data.
         app_data = data.get('application_data', {})
         nebula = app_data.get('_server', {}).get('nebula', {})
-
-        data['nonce'] = nebula.get('nonce')
-        data['blid'] = nebula.get('blid')
-        data['digest'] = nebula.get('digest')
-        data['payload'] = nebula.get('payload')
         ins = super(BitcasaFile, cls).from_meta_data(data,
                                                      parent=parent,
                                                      path=path,
                                                      level=level)
+        ins.nonce = nebula.get('nonce')
+        ins.blid = nebula.get('blid')
+        ins.digest = nebula.get('digest')
+        ins.payload = nebula.get('payload')
+        ins.extension = data.get('extension')
+        ins.mime = data.get('mime')
+        ins.size = data.get('size')
+
         return ins
 
     def download(self, destination_dir, name=None):
@@ -158,22 +194,21 @@ class BitcasaFile(BitcasaItem):
 
 class BitcasaFolder(BitcasaItem):
 
-    _keys = ['is_root']
     items = None
 
     @classmethod
     def from_meta_data(cls, data, parent=None, path=None, level=0):
-        # Inject is_root.
+        ins = super(BitcasaFolder, cls).from_meta_data(data,
+                                                       parent=parent,
+                                                       path=path,
+                                                       level=level)
+
         if 'meta' in data:
             meta_data = data.get('meta', {})
         else:
             meta_data = data
 
-        meta_data['is_root'] = (meta_data.get('type') == 'root')
-        ins = super(BitcasaFolder, cls).from_meta_data(data,
-                                                       parent=parent,
-                                                       path=path,
-                                                       level=level)
+        ins.is_root = (meta_data.get('type') == 'root')
 
         child_items = data.get('items')
         ins.items_from_data(child_items)

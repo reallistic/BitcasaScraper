@@ -35,6 +35,7 @@ class ConnectionPool(object):
         self._connections = []
 
         self._connect_lock = Lock()
+        logger.debug('Making new connection pool')
 
     def _cookies_from_file(self, filename):
         if not filename:
@@ -42,19 +43,20 @@ class ConnectionPool(object):
 
         cookies = None
 
+        logger.debug('Getting cookies from %s', filename)
         try:
             with open(filename, 'r') as fp:
-                json_data = json.loads(fp.read())
-                self.using_cookie_file = True
-                return json_data
+                cookies = json.loads(fp.read())
         except Exception as err:
             logger.exception('failed loading cookies from file. %s', err.message)
+        self.using_cookie_file = True
+        return cookies
 
-    def _store_cookies(self, fp):
+    def _store_cookies(self, filename):
+        logger.debug('Saving cookies to %s', filename)
         try:
-            fp.seek(0)
-            fp.truncate()
-            fp.write(json.dumps(self._cookies))
+            with open(filename, 'w+') as fp:
+                fp.write(json.dumps(self._cookies))
             self.using_cookie_file = True
         except:
             traceback.print_exc()
@@ -74,9 +76,6 @@ class ConnectionPool(object):
         return auth
 
     def logout(self):
-        csrf_token = None
-        if self._cookies:
-            csrf_token = self._cookies.get('tkey_csrf0portal')
         conn = self.pop(force=True)
         with conn as auth:
             auth.logout()
@@ -100,6 +99,7 @@ class ConnectionPool(object):
 
         with self._connect_lock:
             if force or self.can_make_connection():
+                logger.debug('Making new connection')
                 conn = ConnectionContext(self)
                 self._connections.append(conn)
                 return conn

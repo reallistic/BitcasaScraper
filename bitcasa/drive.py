@@ -30,16 +30,10 @@ class BitcasaDrive(object):
         return self.root
 
     def make_download_url(self, bfile):
-        url = os.path.join(self.user.content_base_url,
-                           BITCASA.ENDPOINTS.download, bfile.digest,
-                           bfile.nonce, bfile.payload)
-        return url
+        return os.path.join(BITCASA.ENDPOINTS.download, bfile.path)
 
     def download_file(self, bfile, destination):
-        chunk_size = self.config.chunk_size or 1024 * 1024
-
-        url = self.make_download_url(bfile)
-        return download_file(url, destination, chunk_size)
+        download_file(bfile.path, bfile.size, destination)
 
     def list(self, auto_fetch_drive=True):
         if not (auto_fetch_drive or self.root):

@@ -60,7 +60,7 @@ class AuthenticationManager(object):
             headers = {'Range': 'bytes=%s-' % seek}
             logger.debug('Requesting url with seek: %s %s', seek, url)
         else:
-            logger.debug('Requesting url %s %s', seek, url)
+            logger.debug('Requesting url %s', url)
 
         try:
             resp = self._session.get(url, stream=True, timeout=60,

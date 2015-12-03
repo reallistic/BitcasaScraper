@@ -127,7 +127,6 @@ class FileDownload(object):
                     logger.warn('%s Using partial chunk of length: %s',
                                 self.gid, len(chunk))
                 except StopIteration:
-                    logger.exception('%s Stopping download', self.gid)
                     break
                 if not chunk:
                     break

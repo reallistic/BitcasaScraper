@@ -17,12 +17,13 @@ class RequestHelper(object):
     url = None
     resp = None
 
-    def __init__(self, auth):
+    def __init__(self, auth, validate=True):
         self.auth = auth
+        self.validate = validate
 
     def __enter__(self):
         self.auth.request_lock.acquire()
-        if not self.auth.ignore_session_state:
+        if self.validate:
             self.auth.assert_valid_session()
 
         return self
@@ -106,26 +107,26 @@ class AuthenticationManager(object):
         else:
             logger.debug('Requesting url %s', url)
 
-        with RequestHelper(self) as req:
+        validate = not ignore_session_state
+
+        with RequestHelper(self, validate=validate) as req:
             return req.send('GET', url, raw=True, timeout=120,
                             headers=headers)
 
     def request(self, endpoint, method='GET', ignore_session_state=False,
                 **kwargs):
 
-        self.request_lock.acquire()
-        if not ignore_session_state:
-            self.assert_valid_session()
-
-        if not self._connected:
-            kwargs.setdefault('cookies', self._cookies)
-
         url = BITCASA.url_from_endpoint(endpoint)
+
+        logger.debug('Requesting url %s', url)
+
+        validate = not ignore_session_state
+        with RequestHelper(self, validate=validate) as req:
+            return req.send(method.upper(), url, **kwargs)
 
         error_message = 'Error connecting to drive.bitcasa.com. %s'
         response_data = {}
         resp = None
-        logger.debug('Requesting url %s', url)
         try:
             resp = self._session.request(method.upper(), url, **kwargs)
             response_data = resp.json()
@@ -146,7 +147,6 @@ class AuthenticationManager(object):
         if not self._connected:
             self._connected = True
 
-        self.request_lock.release()
         # Copy to prevent memory leak
         return response_data.copy()
 

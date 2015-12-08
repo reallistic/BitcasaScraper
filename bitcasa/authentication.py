@@ -1,3 +1,5 @@
+
+import logging
 import dryscrape
 import requests
 
@@ -5,8 +7,61 @@ from requests import RequestException
 from uuid import uuid4
 from threading import Lock
 
-from .exceptions import AuthenticationError, ConnectionError
-from .globals import BITCASA, logger
+from .exceptions import AuthenticationError, ConnectionError, ResponseError
+from .globals import BITCASA
+
+logger = logging.getLogger(__name__)
+
+class RequestHelper(object):
+    auth = None
+    url = None
+    resp = None
+
+    def __init__(self, auth):
+        self.auth = auth
+
+    def __enter__(self):
+        self.auth.request_lock.acquire()
+        if not self.auth.ignore_session_state:
+            self.auth.assert_valid_session()
+
+        return self
+
+    def send(self, method, url, raw=False, **kwargs):
+        self.url = url
+
+        if not self.auth._connected:
+            kwargs.setdefault('cookies', self.auth._cookies)
+
+        resp = self.auth._session.request(method.upper(), url, **kwargs)
+        resp.raise_for_status()
+
+        if raw:
+            return resp
+        else:
+            if '/json' in resp.headers['content-type']:
+                json = resp.json()
+                if json.get('error', None):
+                    raise ResponseError('Error found in response',
+                                        error=json.get('error'),
+                                        response=resp)
+                return json
+
+            return resp.content
+
+    def __exit__(self, exc_type, exc_value, tb):
+        url = self.url
+        self.url = None
+        self.auth.request_lock.release()
+
+        if exc_type is not None:
+            logger.error('Error making request to %s', url,
+                         exc_info=(exc_type, exc_value, tb))
+            raise exc_value
+        elif not self.auth._connected:
+            self.auth._connected = True
+
+
 
 class AuthenticationManager(object):
     _session = None
@@ -41,18 +96,7 @@ class AuthenticationManager(object):
 
     def make_download_request(self, endpoint, seek=None,
                               ignore_session_state=False):
-        self.request_lock.acquire()
-        if not ignore_session_state:
-            self.assert_valid_session()
-
-        resp = None
-        error = None
         headers = None
-        cookies = None
-        response_data = {}
-
-        if not self._connected:
-            cookies = self._cookies
 
         url = BITCASA.url_from_endpoint(endpoint)
 
@@ -62,27 +106,9 @@ class AuthenticationManager(object):
         else:
             logger.debug('Requesting url %s', url)
 
-        try:
-            resp = self._session.get(url, stream=True, timeout=60,
-                                     headers=headers, cookies=cookies)
-            resp.raise_for_status()
-        except (ValueError, RequestException) as e:
-            error = resp.content[:30] if resp is not None else e
-            logger.exception('%s - %s', error, url)
-
-        if error is not None:
-            if error == 'unauthorized':
-                self._connected = False
-
-            self.request_lock.release()
-            message = 'Error making download request %s'
-            raise ConnectionError(message % error)
-
-        if not self._connected:
-            self._connected = True
-
-        return resp
-
+        with RequestHelper(self) as req:
+            return req.send('GET', url, raw=True, timeout=120,
+                            headers=headers)
 
     def request(self, endpoint, method='GET', ignore_session_state=False,
                 **kwargs):
@@ -104,9 +130,10 @@ class AuthenticationManager(object):
             resp = self._session.request(method.upper(), url, **kwargs)
             response_data = resp.json()
             resp.raise_for_status()
-        except (ValueError, RequestException):
-            error = resp.content if resp is not None else 'unknown'
+        except (ValueError, RequestException) as e:
+            error = resp.content[:30] if resp is not None else e
             response_data.setdefault('error', error)
+            logger.exception('%s - %s', error, url)
 
         error = response_data.get('error')
         if error is not None:

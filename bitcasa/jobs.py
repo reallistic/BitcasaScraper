@@ -65,7 +65,6 @@ class GeventPoolExecutor(BasePoolExecutor):
     def _do_submit_job(self, job, run_times):
         with self.__count_lock:
             self.__greenlets_spawned += 1
-            job.kwargs.update(gid=self.__greenlets_spawned)
 
         @copy_current_app_ctx
         def callback(greenlet):
@@ -108,8 +107,8 @@ class GeventPoolExecutor(BasePoolExecutor):
                          self.__greenlets_spawned, self.__greenlets_died)
             self._pool.join()
 
-        logger.debug('%s greenlets spawned, %s died. %s jobs left Ending',
-                     self.__greenlets_spawned, self.__greenlets_died, len(jobs))
+        logger.debug('%s greenlets spawned, %s died. Ending',
+                     self.__greenlets_spawned, self.__greenlets_died)
 
         self._pool.join()
 

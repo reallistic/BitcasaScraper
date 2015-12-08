@@ -32,10 +32,9 @@ class FileDownload(object):
 
 
     def __init__(self, file_id, destination, size, chunk_size=None,
-                 job_id=None, gid=None):
+                 job_id=None):
         self.chunk_size = chunk_size or drive.config.chunk_size or None
         self.destination = destination
-        self.gid = gid
         self.job_id = job_id
         self.size = size
         self.path = file_id
@@ -43,7 +42,7 @@ class FileDownload(object):
         self._finished = False
 
     def run(self):
-        logger.debug('%s downloading file %s', self.gid, self.destination)
+        logger.debug('downloading file %s', self.destination)
         self.mode = 'wb'
         self.seek = 0
         self.size_copied = 0
@@ -57,13 +56,13 @@ class FileDownload(object):
         if self.seek > self.size:
             self.seek = 0
         elif self.seek == self.size:
-            logger.debug('%s Found temp. Nothing to download', self.gid)
-            logger.debug('%s finished downloading file %s', self.gid,
-                         self.destination)
+            logger.debug('File of equal name and size exist. '
+                         'Nothing to download')
+            logger.debug('Finished downloading file %s', self.destination)
             return
         elif self.seek > 0:
             self.size_copied += self.seek
-            logger.info('%s continuing download', self.gid)
+            logger.info('continuing download')
             self.mode = 'ab'
 
         self._run()
@@ -80,29 +79,29 @@ class FileDownload(object):
             except (ConnectionError, SizeMismatchError):
                 self.num_retries -= 1
                 if self.num_retries <= 0:
-                    logger.exception('%s Max retries reached', self.gid)
+                    logger.exception('Max retries reached')
                     return
                 else:
-                    #self.mode = 'wb'
-                    #self.seek = 0
-                    #self.size_copied = 0
                     self.seek = self.size_copied
                     self.mode = 'ab'
-                    logger.exception('%s Retrying download for %s',
-                                     self.gid, self.destination)
+                    logger.exception('Retrying download for %s',
+                                     self.destination)
                     gevent.sleep(5)
-                    logger.debug('%s woke up from retry sleep', self.gid)
+                    logger.debug('woke up from retry sleep')
 
         cr = time.time()
         speed = utils.get_speed(self.size_copied-self.seek, (cr-self.st))
-        logger.debug('%s finished downloading file %s at %s', self.gid,
+        logger.debug('Finished downloading file %s at %s',
                      self.destination, speed)
 
     def _download_file(self, conn):
         url = os.path.join(BITCASA.ENDPOINTS.download, self.path.lstrip('/'))
         req = conn.make_download_request(url, seek=self.seek)
-        #req.raw._fp.fp._sock.socket.setblocking(0)
-        req.raw._fp.fp._sock.settimeout(100)
+        # We probably won't be able to download anything, but that
+        # will get caught below.
+        if req.raw._fp and not req.raw._fp.isclosed():
+            req.raw._fp.fp._sock.settimeout(100)
+
         self.st = time.time()
         content = req.iter_content(self.chunk_size)
         progress_time = self.st + self.PROGRESS_INTERVAL
@@ -123,12 +122,12 @@ class FileDownload(object):
                     chunk = content.next()
                 except ProtocolError as e:
                     chunk = e.args[1].partial
-                    logger.warn('%s Using partial chunk of length: %s',
-                                self.gid, len(chunk))
+                    logger.warn('Using partial chunk of length: %s',
+                                len(chunk))
                 except ChunkedEncodingError as e:
                     chunk = e.args[0].args[1].partial
-                    logger.warn('%s Using partial chunk of length: %s',
-                                self.gid, len(chunk))
+                    logger.warn('Using partial chunk of length: %s',
+                                len(chunk))
                 except StopIteration:
                     break
                 if not chunk:
@@ -139,7 +138,7 @@ class FileDownload(object):
                 size_copied_str = utils.convert_size(self.size_copied)
 
                 if self.size_copied > self.size:
-                    logger.warn('%s Downloaded %s expected %s', self.gid,
+                    logger.warn('Downloaded %s expected %s',
                                 size_copied_str, size_str)
 
                 if progress_time < cr:
@@ -151,8 +150,8 @@ class FileDownload(object):
             message = message % (size_str, size_copied_str, req.url)
             raise SizeMismatchError(message)
         elif self.size_copied > self.size:
-            logger.warn('%s Final size more than expected. Got %s expected %s',
-                        self.gid, size_copied_str, size_str)
+            logger.warn('Final size more than expected. Got %s expected %s',
+                        size_copied_str, size_str)
         self._finished = True
 
         conn.request_lock.release()
@@ -164,6 +163,6 @@ class FileDownload(object):
         time_left = utils.get_remaining_time(self.size_copied-self.seek,
                                              self.size-self.size_copied,
                                              (cr-self.st))
-        logger.info('%s %s', self.gid, self.destination)
-        logger.info('%s Downloaded %s of %s at %s. %s left', self.gid,
+        logger.info(self.destination)
+        logger.info('Downloaded %s of %s at %s. %s left',
                     size_copied_str, size_str, speed, time_left)

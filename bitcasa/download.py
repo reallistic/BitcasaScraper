@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 @async(jobstore='download')
 def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
                     parent=None, destination='./', chunk_size=None,
-                    move_to=None, gid=None):
+                    move_to=None):
     if folder:
         url = folder.path
     elif not url:
@@ -38,10 +38,10 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
         folder = BitcasaFolder.from_meta_data(data['result'], parent=parent,
                                               level=level)
 
-    logger.debug('%s, Folder path is %s', gid, folder.path)
+    logger.debug('Folder path is %s', folder.path)
 
     destination = os.path.join(destination, folder.name)
-    logger.debug('%s Making dirs for %s', gid, destination)
+    logger.debug('Making dirs for %s', destination)
     try:
         os.makedirs(destination)
     except OSError as exc:
@@ -51,10 +51,9 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
             raise
 
     for item in folder.items.values():
-        logger.debug('%s found item %s', gid, item.name)
         if level + 1 < max_depth and isinstance(item, BitcasaFolder):
             if job_id:
-                logger.debug('%s Creating new download folder job %s', gid,
+                logger.debug('Creating new download folder job %s',
                              item.path)
                 download_folder.async(url=item.path, level=level+1,
                                       max_depth=max_depth, parent=folder.path,
@@ -69,22 +68,22 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
         elif isinstance(item, BitcasaFile):
             file_path = os.path.join(destination, item.name)
             if job_id:
-                logger.debug('%s Creating new download file job %s', gid,
+                logger.debug('Creating new download file job %s',
                              item.name)
                 download_file.async(item.path, item.size, file_path,
                                     chunk_size=chunk_size, move_to=move_to)
             else:
                 download_file(item.path, item.size, file_path,
                               chunk_size=chunk_size, move_to=move_to)
-    logger.debug('%s Finished folder list', gid)
+    logger.debug('Finished folder list')
 
 
 @async(jobstore='download')
 def download_file(file_id, size, destination, chunk_size=None, move_to=None,
-                  job_id=False, gid=None):
+                  job_id=False):
 
     download = FileDownload(file_id, destination, size, chunk_size=chunk_size,
-                            job_id=job_id, gid=gid)
+                            job_id=job_id)
     download.run()
 
     if move_to:

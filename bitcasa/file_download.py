@@ -87,7 +87,6 @@ class FileDownload(object):
                     logger.exception('Retrying download for %s',
                                      self.destination)
                     gevent.sleep(5)
-                    logger.debug('woke up from retry sleep')
 
         cr = time.time()
         speed = utils.get_speed(self.size_copied-self.seek, (cr-self.st))

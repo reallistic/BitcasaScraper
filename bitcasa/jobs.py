@@ -6,7 +6,6 @@ import sys
 import time
 import uuid
 
-from gevent.event import Event
 from gevent.lock import Semaphore
 from gevent.pool import Pool as BasePool, Group
 from gevent.queue import Queue
@@ -14,14 +13,14 @@ from gevent.timeout import Timeout
 
 from apscheduler.util import obj_to_ref
 
-from apscheduler.schedulers.gevent import GeventScheduler as GeventSchedulerBase
-from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.executors.pool import BasePoolExecutor
-from apscheduler.executors.base import run_job
+from apscheduler.executors.base import (MaxInstancesReachedError,
+                                        run_job as base_run_job)
 
 from .ctx import copy_current_app_ctx
 from .globals import scheduler, _app_ctx_stack
+from .scheduler import GeventScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +39,12 @@ class Pool(BasePool):
         except:
             self._semaphore.release()
             raise
+
+
+def run_job(job, *args, **kwargs):
+    logger.debug('Running job %s', job.id)
+    return base_run_job(job, *args, **kwargs)
+
 
 class GeventPoolExecutor(BasePoolExecutor):
     def __init__(self, max_workers=10):
@@ -62,6 +67,10 @@ class GeventPoolExecutor(BasePoolExecutor):
             self._monitor = gevent.spawn(copy_current_app_ctx(self._monitor_pool))
             self._monitor.gid = 'queue monitor'
 
+    def submit_job(self, job, run_times):
+        logger.debug('Submitting job %s', job.id)
+        super(GeventPoolExecutor, self).submit_job(job, run_times)
+
     def _do_submit_job(self, job, run_times):
         with self.__count_lock:
             self.__greenlets_spawned += 1
@@ -70,12 +79,15 @@ class GeventPoolExecutor(BasePoolExecutor):
         def callback(greenlet):
             with self.__count_lock:
                 self.__greenlets_died += 1
+
             try:
                 events = greenlet.get()
             except:
                 self._run_job_error(job.id, *sys.exc_info()[1:])
+                # TODO: Store the (unique) job in a failed jobstore.
             else:
                 self._run_job_success(job.id, events)
+
 
         g = self._pool.greenlet_class(copy_current_app_ctx(run_job), job,
                                       job._jobstore_alias, run_times,
@@ -111,30 +123,6 @@ class GeventPoolExecutor(BasePoolExecutor):
                      self.__greenlets_spawned, self.__greenlets_died)
 
         self._pool.join()
-
-
-class GeventScheduler(GeventSchedulerBase):
-    def start(self):
-        BaseScheduler.start(self)
-        self._event = Event()
-
-        @copy_current_app_ctx
-        def run_main_loop():
-            self._main_loop()
-
-        self._greenlet = gevent.spawn(run_main_loop)
-        return self._greenlet
-
-    def _main_loop(self):
-        while self.running:
-            logger.debug('Processing jobs')
-            wait_seconds = self._process_jobs()
-            if wait_seconds is None:
-                wait_seconds = self.MAX_WAIT_TIME
-            logger.debug('Waiting %s seconds until running next job',
-                         wait_seconds)
-            self._event.wait(wait_seconds)
-            self._event.clear()
 
 
 def async(jobstore):

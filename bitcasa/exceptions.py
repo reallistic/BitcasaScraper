@@ -25,3 +25,8 @@ class ResponseError(BitcasaError):
         self.kwargs = kwargs.pop('error', None)
         self.response = kwargs.pop('response', None)
         super(ResponseError, self).__init__(*args, **kwargs)
+
+class DownloadError(BitcasaError):
+    def __init__(self, *args, **kwargs):
+        self.item = kwargs.pop('item', None)
+        super(DownloadError, self).__init__(*args, **kwargs)

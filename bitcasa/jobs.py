@@ -84,7 +84,6 @@ class GeventPoolExecutor(BasePoolExecutor):
                 events = greenlet.get()
             except:
                 self._run_job_error(job.id, *sys.exc_info()[1:])
-                # TODO: Store the (unique) job in a failed jobstore.
             else:
                 self._run_job_success(job.id, events)
 

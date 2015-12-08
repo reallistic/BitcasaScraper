@@ -117,9 +117,6 @@ class BitcasaItem(Base):
                             backref=backref('parent', remote_side=id),
                             collection_class=attribute_mapped_collection('id'))
 
-    # _keys = ['modified', 'created', 'id', 'name', 'parent_id',
-    #          'version', 'path', 'path_name', 'level']
-
     def __repr__(self):
         return '<%s %s:%s>' % (self.__class__.__name__, self.id, self.name)
 
@@ -167,6 +164,17 @@ class BitcasaItem(Base):
 
     def __str__(self):
         return self.id or '<root>'
+
+
+class BitcasaFailedItem(Base):
+
+    __tablename__ = 'faileditems'
+    id = Column(types.Text(), primary_key=True)
+    name = Column(types.Text())
+    size = Column(types.Integer)
+    size_downloaded = Column(types.Integer)
+    path = Column(types.Text())
+    attempts = Column(types.Integer)
 
 
 class BitcasaFile(BitcasaItem):

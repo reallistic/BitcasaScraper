@@ -10,8 +10,9 @@ from requests.packages.urllib3.exceptions import ProtocolError
 
 from . import utils
 
-from .exceptions import ConnectionError, SizeMismatchError
+from .exceptions import ConnectionError, SizeMismatchError, DownloadError
 from .globals import BITCASA, drive, connection_pool, scheduler
+from .models import BitcasaFailedItem
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +80,13 @@ class FileDownload(object):
             except (ConnectionError, SizeMismatchError):
                 self.num_retries -= 1
                 if self.num_retries <= 0:
-                    logger.exception('Max retries reached')
-                    return
+                    item = BitcasaFailedItem(id=self.path,
+                                             path=self.destination,
+                                             size=self.size,
+                                             size_downloaded=self.size_copied,
+                                             name=os.path.split(self.destination)[-1],
+                                             attempts=1)
+                    raise DownloadError('Max retres reached', item=item)
                 else:
                     self.seek = self.size_copied
                     self.mode = 'ab'

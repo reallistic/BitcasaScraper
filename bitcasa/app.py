@@ -3,7 +3,7 @@ import logging
 
 from sqlalchemy import create_engine
 
-from apscheduler.events import EVENT_JOB_EXECUTED
+from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from sqlalchemy.orm import Session
 
 from .args import BitcasaParser
@@ -11,12 +11,13 @@ from .config import ConfigManager
 from .connection import ConnectionPool
 from .ctx import BitcasaDriveAppContext
 from .download import download_folder
+from .exception import DownloadError
 from .list import list_folder
 from .drive import BitcasaDrive
 from .globals import scheduler, drive, connection_pool, current_app
 from .jobs import setup_scheduler
 from .logger import setup_logger, setup_scheduler_loggers
-from .models import Base, BitcasaItem
+from .models import Base, BitcasaItem, BitcasaFailedItem
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,27 @@ class BitcasaDriveApp(object):
 
     def listen_for_results(self):
         scheduler.add_listener(self.record_results, mask=EVENT_JOB_EXECUTED)
+        scheduler.add_listener(self.record_error, mask=EVENT_JOB_ERROR)
+
+    def record_error(self, event):
+        logger.debug('Received event with error: %r', event.exception)
+        if isinstance(event.exception, DownloadError):
+            item = event.exception.item
+            query = self.db.query(BitcasaFailedItem).\
+                filter(BitcasaFailedItem.id == item.id)
+            exists = query.count()
+            # TODO: Find the proper methods for the first, update, and add apis.
+            if exists:
+                item = query.first()
+                item.attempts += 1
+                self.db.update(item)
+            else:
+                self.db.add(item)
+
+            try:
+                self.db.commit()
+            except:
+                logger.exception('Error commiting results to failed db')
 
     def record_results(self, event):
         logger.debug('Received event with result: %r', event.retval)

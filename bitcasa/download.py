@@ -1,14 +1,17 @@
 import os
 import errno
 import time
+import logging
 
 from . import utils
 
 from .file_download import FileDownload
-from .globals import BITCASA, logger, scheduler, connection_pool, drive
+from .globals import BITCASA, scheduler, connection_pool, drive
 from .jobs import async
 from .models import BitcasaFile, BitcasaFolder
 from .move import _move_file
+
+logger = logging.getLogger(__name__)
 
 
 @async(jobstore='download')

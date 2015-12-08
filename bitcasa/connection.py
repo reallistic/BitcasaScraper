@@ -1,3 +1,4 @@
+import logging
 import json
 import traceback
 
@@ -7,7 +8,8 @@ from Queue import Queue, Empty
 from .authentication import AuthenticationManager
 from .ctx import ConnectionContext
 from .exceptions import AuthenticationError
-from .globals import logger
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionPool(object):

@@ -2,7 +2,7 @@ import os
 
 from .download import download_file
 from .exceptions import BitcasaError
-from .globals import BITCASA, connection_pool, logger
+from .globals import BITCASA, connection_pool
 from .models import BitcasaFolder, BitcasaUser
 
 

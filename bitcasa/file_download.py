@@ -1,4 +1,5 @@
 
+import logging
 import gevent
 import os
 import time
@@ -10,7 +11,9 @@ from requests.packages.urllib3.exceptions import ProtocolError
 from . import utils
 
 from .exceptions import ConnectionError, SizeMismatchError
-from .globals import BITCASA, drive, logger, connection_pool, scheduler
+from .globals import BITCASA, drive, connection_pool, scheduler
+
+logger = logging.getLogger(__name__)
 
 
 class FileDownload(object):

@@ -1,3 +1,5 @@
+
+import logging
 import os
 
 from sqlalchemy import Column, ForeignKey, types
@@ -5,10 +7,11 @@ from sqlalchemy.orm import backref, relationship
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
-from .globals import BITCASA, logger, drive
+from .globals import BITCASA, drive
 
 Base = declarative_base()
 
+logger = logging.getLogger(__name__)
 
 class SimpleObject(object):
     def __init__(self, **kwargs):

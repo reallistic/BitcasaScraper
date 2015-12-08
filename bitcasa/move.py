@@ -4,7 +4,7 @@ import time
 
 from . import utils
 
-from .globals import logger, scheduler
+from .globals import scheduler
 from .jobs import async
 
 

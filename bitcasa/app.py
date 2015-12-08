@@ -1,3 +1,6 @@
+
+import logging
+
 from sqlalchemy import create_engine
 
 from apscheduler.events import EVENT_JOB_EXECUTED
@@ -10,10 +13,12 @@ from .ctx import BitcasaDriveAppContext
 from .download import download_folder
 from .list import list_folder
 from .drive import BitcasaDrive
-from .globals import scheduler, drive, connection_pool, current_app, logger
+from .globals import scheduler, drive, connection_pool, current_app
 from .jobs import setup_scheduler
 from .logger import setup_logger, setup_scheduler_loggers
 from .models import Base, BitcasaItem
+
+logger = logging.getLogger(__name__)
 
 class BitcasaDriveApp(object):
     """Simple app to use for context management"""
@@ -25,6 +30,7 @@ class BitcasaDriveApp(object):
         self.config = ConfigManager(self.args).get_config()
         self.connection_class = connection_class
         self.drive_class = drive_class
+        self.setup_logger()
 
     def get_context(self):
         return BitcasaDriveAppContext(self)
@@ -87,9 +93,8 @@ class BitcasaDriveApp(object):
             return self.drive_class(config=self.config, auto_fetch_root=False)
 
     def setup_logger(self):
-        app_logger = setup_logger('BitcasaConsole', config=self.config)
+        setup_logger('bitcasa', config=self.config)
         setup_scheduler_loggers(config=self.config)
-        return app_logger
 
     def setup_scheduler(self):
         app_scheduler = setup_scheduler(config=self.config)

@@ -1,6 +1,6 @@
 import os
 
-from .globals import BITCASA, logger, connection_pool
+from .globals import BITCASA, connection_pool
 from .jobs import async
 from .models import BitcasaFolder
 

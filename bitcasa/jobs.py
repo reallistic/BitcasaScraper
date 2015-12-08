@@ -1,12 +1,16 @@
+
+import logging
 import gevent
 import functools
 import sys
 import time
 import uuid
 
-from gevent import pool, queue
 from gevent.event import Event
 from gevent.lock import Semaphore
+from gevent.pool import Pool as BasePool, Group
+from gevent.queue import Queue
+from gevent.timeout import Timeout
 
 from apscheduler.util import obj_to_ref
 
@@ -17,41 +21,46 @@ from apscheduler.executors.pool import BasePoolExecutor
 from apscheduler.executors.base import run_job
 
 from .ctx import copy_current_app_ctx
-from .globals import logger, scheduler, _app_ctx_stack
+from .globals import scheduler, _app_ctx_stack
 
+logger = logging.getLogger(__name__)
+
+
+class Pool(BasePool):
+    def start(self, greenlet, timeout=None):
+        self.add(greenlet, timeout=timeout)
+        greenlet.start()
+
+    def add(self, greenlet, timeout=None):
+        acquired = self._semaphore.acquire(timeout=timeout)
+        if not acquired:
+            raise Timeout()
+        try:
+            Group.add(self, greenlet)
+        except:
+            self._semaphore.release()
+            raise
 
 class GeventPoolExecutor(BasePoolExecutor):
     def __init__(self, max_workers=10):
-        gevent_pool = pool.Pool(size=max_workers)
+        gevent_pool = Pool(size=max_workers)
         super(GeventPoolExecutor, self).__init__(gevent_pool)
         self.__count_lock = Semaphore()
         self.__greenlets_spawned = 0
         self.__greenlets_died = 0
-        self._queue = queue.Queue()
+        self._queue = Queue()
         self._monitor = None
 
     def _monitor_pool(self):
-        while self._queue.qsize():
-            logger.debug('waiting for pool %s', self._queue.qsize())
-            self._pool._semaphore.acquire()
-            self._pool._semaphore.release()
-            free_count = self._pool.free_count()
-            logger.debug('finished waiting. free: %s', free_count)
-            while free_count > 0:
-                try:
-                    greenlet = self._queue.get_nowait()
-                    logger.debug('spawning greenlet %s from queue', greenlet.num)
-                    self._pool.start(greenlet)
-                except queue.Empty:
-                    break
-
-        self._monitor = None
-
+        while True:
+            g = self._queue.get()
+            self._pool.start(g)
 
     def _queue_spawn(self, greenlet):
         self._queue.put_nowait(greenlet)
         if not self._monitor:
             self._monitor = gevent.spawn(copy_current_app_ctx(self._monitor_pool))
+            self._monitor.gid = 'queue monitor'
 
     def _do_submit_job(self, job, run_times):
         with self.__count_lock:
@@ -62,8 +71,6 @@ class GeventPoolExecutor(BasePoolExecutor):
         def callback(greenlet):
             with self.__count_lock:
                 self.__greenlets_died += 1
-                logger.debug('%s greenlet died %s', greenlet.num,
-                             job.func.__name__)
             try:
                 events = greenlet.get()
             except:
@@ -71,23 +78,18 @@ class GeventPoolExecutor(BasePoolExecutor):
             else:
                 self._run_job_success(job.id, events)
 
-        @copy_current_app_ctx
-        def run_job_in_ctx(job, *args, **kwargs):
-            return run_job(job, *args, **kwargs)
-
-        g = self._pool.greenlet_class(run_job_in_ctx, job,
+        g = self._pool.greenlet_class(copy_current_app_ctx(run_job), job,
                                       job._jobstore_alias, run_times,
                                       self._logger.name)
-        g.num = self.__greenlets_spawned
+        g.gid = 'Thread-%s' % self.__greenlets_spawned
         g.link(callback)
 
 
-        if self._pool.full():
-            logger.debug('Adding greenlet to queue %s', g.num)
+        try:
+            self._pool.start(g, timeout=1)
+        except Timeout:
             self._queue_spawn(g)
-        else:
-            logger.debug('Spawning greenlet %s', g.num)
-            self._pool.start(g)
+
 
     def shutdown(self, wait=True):
         if wait:
@@ -101,16 +103,10 @@ class GeventPoolExecutor(BasePoolExecutor):
             logger.warn('No greenlets spawned before timeout. Exiting')
             return
 
-        jobs = self._scheduler.get_jobs(jobstore='download')
-
-        while len(jobs) > 0 or self.__greenlets_spawned > self.__greenlets_died:
-            logger.debug('%s greenlets spawned, %s died. Waiting a second..',
+        while self.__greenlets_spawned > self.__greenlets_died:
+            logger.debug('%s greenlets spawned, %s died. Waiting..',
                          self.__greenlets_spawned, self.__greenlets_died)
             self._pool.join()
-
-            if self.__greenlets_spawned <= self.__greenlets_died:
-                jobs = self._scheduler.get_jobs(jobstore='download')
-                logger.debug('%s jobs still left. Waiting..', len(jobs))
 
         logger.debug('%s greenlets spawned, %s died. %s jobs left Ending',
                      self.__greenlets_spawned, self.__greenlets_died, len(jobs))

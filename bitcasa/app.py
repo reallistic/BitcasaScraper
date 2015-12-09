@@ -1,11 +1,6 @@
 
 import logging
 
-from sqlalchemy import create_engine
-
-from apscheduler.events import EVENT_JOB_EXECUTED
-from sqlalchemy.orm import Session
-
 from .args import BitcasaParser
 from .config import ConfigManager
 from .connection import ConnectionPool
@@ -15,13 +10,14 @@ from .list import list_folder
 from .drive import BitcasaDrive
 from .globals import scheduler, drive, connection_pool, current_app
 from .jobs import setup_scheduler
-from .logger import setup_logger, setup_scheduler_loggers
-from .models import Base, BitcasaItem
+from .logger import setup_logger, setup_misc_loggers, setup_scheduler_loggers
+from .results import ResultRecorder
 
 logger = logging.getLogger(__name__)
 
 class BitcasaDriveApp(object):
     """Simple app to use for context management"""
+    results = None
 
     def __init__(self, connection_class=ConnectionPool,
                  drive_class=BitcasaDrive):
@@ -36,14 +32,29 @@ class BitcasaDriveApp(object):
         return BitcasaDriveAppContext(self)
 
     def run(self):
+        """Wrapper to make putting things in a huge try catch easier"""
+        try:
+            self._run()
+        except KeyboardInterrupt:
+            logger.info('Goodbye')
+        finally:
+            if scheduler and scheduler.running:
+                logger.info('Shutting down scheduler')
+                scheduler.shutdown()
+
+            if self.results:
+                logger.info('Closing results')
+                self.results.close()
+
+    def _run(self):
         message = 'Working in wrong app context. (%r instead of %r)'
         message = message % (current_app, self)
         assert current_app == self, message
 
         if self.config.command in ['list', 'download']:
-            self.listen_for_results()
             scheduler.start()
-            self.setup_models()
+            self.results = ResultRecorder(self.config)
+            self.results.listen()
 
         if self.config.command == 'shell':
             import code
@@ -67,7 +78,7 @@ class BitcasaDriveApp(object):
 
             executor = scheduler._lookup_executor('list')
             executor.wait()
-            self.list_results()
+            self.results.list()
 
         if self.config.command == 'logout':
             connection_pool.logout()
@@ -95,36 +106,8 @@ class BitcasaDriveApp(object):
     def setup_logger(self):
         setup_logger('bitcasa', config=self.config)
         setup_scheduler_loggers(config=self.config)
+        setup_misc_loggers()
 
     def setup_scheduler(self):
         app_scheduler = setup_scheduler(config=self.config)
-
         return app_scheduler
-
-    def setup_models(self):
-        engine = create_engine(self.config.results_uri)
-        Base.metadata.create_all(engine)
-        self.db = Session(engine)
-
-    def listen_for_results(self):
-        scheduler.add_listener(self.record_results, mask=EVENT_JOB_EXECUTED)
-
-    def record_results(self, event):
-        logger.debug('Received event with result: %r', event.retval)
-        if event.retval:
-            for item in event.retval:
-                exists = self.db.query(BitcasaItem).\
-                    filter(BitcasaItem.id == item.id).count()
-                if not exists:
-                    self.db.add(item)
-
-            try:
-                self.db.commit()
-            except:
-                logger.exception('Error commiting results to db')
-
-    def list_results(self):
-        for item in self.db.query(BitcasaItem).order_by(BitcasaItem.path).all():
-            #print '%s%s - %s' % (''.join(['   '] * item.level), item.name,
-            #                     item.id)
-            print '%s - %s' % (item.path_name, item.name)

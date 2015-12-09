@@ -9,7 +9,6 @@ import uuid
 from gevent.lock import Semaphore
 from gevent.pool import Pool as BasePool, Group
 from gevent.queue import Queue
-from gevent.timeout import Timeout
 
 from apscheduler.util import obj_to_ref
 
@@ -26,23 +25,25 @@ logger = logging.getLogger(__name__)
 
 
 class Pool(BasePool):
-    def start(self, greenlet, timeout=None):
-        self.add(greenlet, timeout=timeout)
-        greenlet.start()
+    def start(self, greenlet, blocking=True):
+        rv = self.add(greenlet, blocking=blocking)
+        if rv:
+            greenlet.start()
+        return rv
 
-    def add(self, greenlet, timeout=None):
-        acquired = self._semaphore.acquire(timeout=timeout)
+    def add(self, greenlet, blocking=True):
+        acquired = self._semaphore.acquire(blocking=blocking)
         if not acquired:
-            raise Timeout()
+            return False
         try:
             Group.add(self, greenlet)
         except:
             self._semaphore.release()
             raise
+        return True
 
 
 def run_job(job, *args, **kwargs):
-    logger.debug('Running job %s', job.id)
     return base_run_job(job, *args, **kwargs)
 
 
@@ -68,8 +69,8 @@ class GeventPoolExecutor(BasePoolExecutor):
             self._monitor.gid = 'queue monitor'
 
     def submit_job(self, job, run_times):
-        logger.debug('Submitting job %s', job.id)
         super(GeventPoolExecutor, self).submit_job(job, run_times)
+        gevent.sleep(1)
 
     def _do_submit_job(self, job, run_times):
         with self.__count_lock:
@@ -84,7 +85,6 @@ class GeventPoolExecutor(BasePoolExecutor):
                 events = greenlet.get()
             except:
                 self._run_job_error(job.id, *sys.exc_info()[1:])
-                # TODO: Store the (unique) job in a failed jobstore.
             else:
                 self._run_job_success(job.id, events)
 
@@ -96,9 +96,7 @@ class GeventPoolExecutor(BasePoolExecutor):
         g.link(callback)
 
 
-        try:
-            self._pool.start(g, timeout=1)
-        except Timeout:
+        if not self._pool.start(g, False):
             self._queue_spawn(g)
 
 

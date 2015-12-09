@@ -117,9 +117,6 @@ class BitcasaItem(Base):
                             backref=backref('parent', remote_side=id),
                             collection_class=attribute_mapped_collection('id'))
 
-    # _keys = ['modified', 'created', 'id', 'name', 'parent_id',
-    #          'version', 'path', 'path_name', 'level']
-
     def __repr__(self):
         return '<%s %s:%s>' % (self.__class__.__name__, self.id, self.name)
 
@@ -261,3 +258,22 @@ class BitcasaItemFactory(object):
     def make_item(cls, data, parent=None):
         item_class = cls.class_map.get(data.get('type'), BitcasaItem)
         return item_class.from_meta_data(data, parent=parent)
+
+
+class FileDownloadResult(Base):
+    __tablename__ = 'downloads'
+    id = Column(types.Text(), primary_key=True)
+    name = Column(types.Text())
+    size = Column(types.Integer)
+    size_downloaded = Column(types.Integer)
+    destination = Column(types.Text())
+    attempts = Column(types.Integer)
+    error = Column(types.Text())
+    success = Column(types.Boolean())
+
+class FolderListResult(object):
+    """Helper class to properly route results"""
+    items = None
+
+    def __init__(self, items):
+        self.items = items

@@ -31,6 +31,11 @@ class BitcasaParser(argparse.ArgumentParser):
             parents=[self.base_parser, self.iobase_parser],
             help='List the root of your bitcasa drive')
 
+        self.list_parser.add_argument('--list-workers',
+            dest='list_workers', type=int,
+            help=('How many workers will traverse folders at the same time. '
+                  '(default: 4)'))
+
         self.download_parser = self.actions.add_parser('download',
             parents=[self.base_parser, self.iobase_parser],
             help='Recursively download your bitcasa drive')
@@ -53,6 +58,16 @@ class BitcasaParser(argparse.ArgumentParser):
         self.download_parser.add_argument('--move-to',
             dest='move_to',
             help='The base folder to move completed downloads')
+
+        self.download_parser.add_argument('--max-retries',
+            dest='max_retries',
+            help=('How many times to retry a download in a single session. '
+                  'Minimum 1. Setting this below 1 will use the default 3'))
+
+        self.download_parser.add_argument('--max-attempts',
+            dest='max_attempts',
+            help=('How many times to retry a download in all sessions. '
+                  'Set to 0 (default) to disable.'))
 
     def create_shell_parser(self):
         self.shell_parser = self.actions.add_parser('shell',
@@ -79,11 +94,6 @@ class BitcasaParser(argparse.ArgumentParser):
         self.iobase_parser.add_argument('--results-uri', dest='results_uri',
             help=('sqlite connection string to store job results. '
                   '(default: sqlite:///bitcasajobs.sqlite'))
-
-        self.iobase_parser.add_argument('--list-workers',
-            dest='list_workers', type=int,
-            help=('How many workers will traverse folders at the same time. '
-                  '(default: 4)'))
 
         self.iobase_parser.add_argument('-d', '--max-depth', dest='max_depth',
             type=int, help='The maximum folder traversal depth. (default: 1)')

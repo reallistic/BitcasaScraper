@@ -34,12 +34,14 @@ class FileDownload(object):
 
 
     def __init__(self, file_id, destination, size, chunk_size=None,
-                 job_id=None):
+                 max_retries=None, job_id=None):
         self.chunk_size = chunk_size or drive.config.chunk_size or None
         self.destination = destination
         self.job_id = job_id
         self.size = size
         self.path = file_id
+
+        self.num_retries = max_retries or 3
 
         self._finished = False
 
@@ -69,7 +71,6 @@ class FileDownload(object):
         return self._run()
 
     def _run(self):
-        self.num_retries = 3
         error = None
         error_message = None
         while not self._finished and self.num_retries > 0:

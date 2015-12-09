@@ -37,6 +37,7 @@ class ConfigManager(object):
     def get_defaults(cls):
         defaults = dict(auth=True, pdb=False, move_workers=4, list_workers=4,
                         download_workers=4, max_depth=1,
+                        max_retries=3, max_attempts=0,
                         cookie_file='./cookies', verbose=0,
                         chunk_size=None, config_file='./bitcasa.ini',
                         quiet=False, download_folder='./downloads',

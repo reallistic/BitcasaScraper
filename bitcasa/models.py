@@ -111,6 +111,7 @@ class BitcasaItem(Base):
     digest = Column(types.Text())
     blid = Column(types.Text())
     is_root = Column(types.Boolean())
+    is_folder = Column(types.Boolean())
 
     children = relationship('BitcasaItem',
                             cascade='all, delete-orphan',
@@ -138,7 +139,7 @@ class BitcasaItem(Base):
         item['modified'] = meta_data.get('date_content_last_modified')
         item['created'] = meta_data.get('date_created')
 
-        item['path_name'] = app_data.get('running_path_name')
+        item['path_name'] = app_data.get('_server', {}).get('running_path_name')
 
         if isinstance(parent, BitcasaItem):
             item['level'] = parent.level + 1
@@ -152,6 +153,8 @@ class BitcasaItem(Base):
                 if isinstance(parent, BitcasaItem):
                     item['path'] = os.path.join(parent.path,
                                                 meta_data.get('id'))
+                    if not item['path_name']:
+                        item['path_name'] = os.path.join(parent.path_name, item['name'])
                 elif isinstance(parent, basestring):
                     item['path'] = os.path.join(parent,
                                                 meta_data.get('id'))
@@ -184,6 +187,8 @@ class BitcasaFile(BitcasaItem):
         ins.extension = data.get('extension')
         ins.mime = data.get('mime')
         ins.size = data.get('size')
+        ins.is_root = False
+        ins.is_folder = False
 
         return ins
 
@@ -209,6 +214,7 @@ class BitcasaFolder(BitcasaItem):
             meta_data = data
 
         ins.is_root = (meta_data.get('type') == 'root')
+        ins.is_folder = True
 
         child_items = data.get('items')
         ins.items_from_data(child_items)

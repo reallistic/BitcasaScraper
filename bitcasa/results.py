@@ -30,9 +30,8 @@ class ResultRecorder(object):
             item = event.exception.item
             self.save_download_result(item)
 
-    def has_download(self, item_id):
-        item = self.db.query(FileDownloadResult).get(item_id)
-        return bool(item and not item.error)
+    def get_download(self, item_id):
+        return self.db.query(FileDownloadResult).get(item_id)
 
     def add_list_result(self, item):
         if not self.db.query(BitcasaItem).get(item.id):
@@ -58,10 +57,9 @@ class ResultRecorder(object):
             db_item = self.db.query(FileDownloadResult).get(item.id)
             if db_item:
                 db_item.attempts += 1
-                self.db.flush()
             else:
                 self.db.add(item)
-                self.db.commit()
+            self.db.commit()
         except:
             logger.exception('Error commiting results to download result db')
 

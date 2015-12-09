@@ -64,9 +64,16 @@ class BitcasaDriveApp(object):
 
         if self.config.command == 'download':
             logger.debug('doing download')
+            if self.config.max_retries <= 0:
+                logger.warn('Trying to disable max retries could cause '
+                            'the program to run forever. '
+                            'Setting max retries to 3')
+                # Note this override is done in the FileDownload class
             download_folder.async(url=self.config.bitcasa_folder,
                                   destination=self.config.download_folder,
-                                  max_depth=self.config.max_depth)
+                                  max_depth=self.config.max_depth,
+                                  max_attempts=self.config.max_attempts,
+                                  max_retries=self.config.max_retries)
 
             executor = scheduler._lookup_executor('download')
             executor.wait()

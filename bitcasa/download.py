@@ -8,7 +8,7 @@ from . import utils
 from .file_download import FileDownload
 from .globals import BITCASA, scheduler, connection_pool, drive, current_app
 from .jobs import async
-from .models import BitcasaFile, BitcasaFolder
+from .models import BitcasaFile, BitcasaFolder, FolderListResult
 from .move import _move_file
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 @async(jobstore='download')
 def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
                     parent=None, destination='./', chunk_size=None,
-                    move_to=None):
+                    move_to=None, max_retries=None, max_attempts=None):
     if folder:
         url = folder.path
     elif not url:
@@ -50,7 +50,10 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
         else:
             raise
 
+    results = [folder]
     for item in folder.items.values():
+        results.append(item)
+
         if ((not max_depth or level + 1 < max_depth) and
             isinstance(item, BitcasaFolder)):
             if job_id:
@@ -60,36 +63,49 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
                                       max_depth=max_depth, parent=folder.path,
                                       destination=destination,
                                       chunk_size=chunk_size,
-                                      move_to=move_to)
+                                      move_to=move_to,
+                                      max_retries=max_retries,
+                                      max_attempts=max_attempts)
             else:
                 download_folder(folder=item, level=level+1, max_depth=max_depth,
                                 parent=folder, destination=destination,
-                                chunk_size=chunk_size, move_to=move_to)
+                                chunk_size=chunk_size, move_to=move_to,
+                                max_retries=max_retries,
+                                max_attempts=max_attempts)
 
         elif isinstance(item, BitcasaFile):
             file_path = os.path.join(destination, item.name)
-            if current_app.results.has_download(item.path):
+            download = current_app.results.get_download(item.path)
+            if download and download.success:
                 logger.debug('File download already exist. Skipping %s',
                              item.name)
+                continue
+            if (not max_attempts or
+                (download and download.attempts >= max_attempts)):
+                logger.debug(('File download failed more than allowed. '
+                             'Skipping %s'), item.name)
                 continue
 
             if job_id:
                 logger.debug('Creating new download file job %s',
                              item.name)
                 download_file.async(item.path, item.size, file_path,
-                                    chunk_size=chunk_size, move_to=move_to)
+                                    chunk_size=chunk_size, move_to=move_to,
+                                    max_retries=max_retries)
             else:
                 download_file(item.path, item.size, file_path,
-                              chunk_size=chunk_size, move_to=move_to)
+                              chunk_size=chunk_size, move_to=move_to,
+                              max_retries=max_retries)
     logger.debug('Finished folder list')
+    return FolderListResult(results)
 
 
 @async(jobstore='download')
 def download_file(file_id, size, destination, chunk_size=None, move_to=None,
-                  job_id=False):
+                  max_retries=None, job_id=False):
 
     download = FileDownload(file_id, destination, size, chunk_size=chunk_size,
-                            job_id=job_id)
+                            max_retries=max_retries, job_id=job_id)
     result = download.run()
 
     if move_to:

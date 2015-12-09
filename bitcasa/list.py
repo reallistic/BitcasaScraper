@@ -2,7 +2,7 @@ import os
 
 from .globals import BITCASA, connection_pool
 from .jobs import async
-from .models import BitcasaFolder
+from .models import BitcasaFolder, FolderListResult
 
 @async(jobstore='list')
 def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
@@ -37,7 +37,8 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
             #workflow = WorkflowHelper.from_job(job_id)
             #workflow.do_next_step()
 
-        if level + 1 < max_depth and isinstance(item, BitcasaFolder):
+        if ((not max_depth or level + 1 < max_depth) and
+            isinstance(item, BitcasaFolder)):
             if job_id:
                 list_folder.async(url=item.path, level=level+1,
                                   max_depth=max_depth, parent=folder.path)
@@ -45,4 +46,4 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
                 results += list_folder(folder=item, level=level+1, max_depth=max_depth,
                                        parent=folder)
 
-    return results
+    return FolderListResult(results)

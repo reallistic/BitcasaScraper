@@ -4,15 +4,16 @@ import gevent
 import os
 import time
 import select
+import traceback
 
-from requests.exceptions import ChunkedEncodingError
+from requests.exceptions import ChunkedEncodingError, RequestException
 from requests.packages.urllib3.exceptions import ProtocolError
 
 from . import utils
 
 from .exceptions import ConnectionError, SizeMismatchError, DownloadError
 from .globals import BITCASA, drive, connection_pool, scheduler
-from .models import BitcasaFailedItem
+from .models import FileDownloadResult
 
 logger = logging.getLogger(__name__)
 
@@ -59,17 +60,18 @@ class FileDownload(object):
         elif self.seek == self.size:
             logger.debug('File of equal name and size exist. '
                          'Nothing to download')
-            logger.debug('Finished downloading file %s', self.destination)
-            return
+            self._finished = True
         elif self.seek > 0:
             self.size_copied += self.seek
             logger.info('continuing download')
             self.mode = 'ab'
 
-        self._run()
+        return self._run()
 
     def _run(self):
         self.num_retries = 3
+        error = None
+        error_message = None
         while not self._finished and self.num_retries > 0:
             try:
                 ctx = connection_pool.pop()
@@ -77,27 +79,43 @@ class FileDownload(object):
                     # throw away this connection
                     ctx.clear()
                     self._download_file(conn)
-            except (ConnectionError, SizeMismatchError):
+            except (ConnectionError, RequestException, SizeMismatchError):
                 self.num_retries -= 1
                 if self.num_retries <= 0:
-                    item = BitcasaFailedItem(id=self.path,
-                                             path=self.destination,
-                                             size=self.size,
-                                             size_downloaded=self.size_copied,
-                                             name=os.path.split(self.destination)[-1],
-                                             attempts=1)
-                    raise DownloadError('Max retres reached', item=item)
+                    error = traceback.format_exc()
+                    error_message = 'Max retries reached'
                 else:
                     self.seek = self.size_copied
                     self.mode = 'ab'
                     logger.exception('Retrying download for %s',
                                      self.destination)
                     gevent.sleep(5)
+            except:
+                error = traceback.format_exc()
+                logger.exception('Exception downloading %s', self.destination)
+                error_message = 'Exception downloading %s' % self.destination
 
-        cr = time.time()
-        speed = utils.get_speed(self.size_copied-self.seek, (cr-self.st))
-        logger.debug('Finished downloading file %s at %s',
-                     self.destination, speed)
+        item = FileDownloadResult(id=self.path,
+                                  destination=self.destination,
+                                  size=self.size,
+                                  size_downloaded=self.size_copied,
+                                  name=os.path.split(self.destination)[-1],
+                                  attempts=1,
+                                  success=True,
+                                  error=error)
+        if error:
+            item.success = False
+            raise DownloadError(error_message, item=item)
+
+        if self.seek != self.size:
+            cr = time.time()
+            speed = utils.get_speed(self.size_copied-self.seek, (cr-self.st))
+            logger.debug('Finished downloading file %s at %s',
+                         self.destination, speed)
+        else:
+            logger.debug('Finished downloading file %s', self.destination)
+
+        return item
 
     def _download_file(self, conn):
         url = os.path.join(BITCASA.ENDPOINTS.download, self.path.lstrip('/'))

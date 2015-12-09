@@ -80,11 +80,22 @@ def _configure_logger(l, config=None, level=None):
 
 
 
+def setup_misc_loggers():
+    for app in ('requests',):
+        l = logging.getLogger(app)
+        _configure_logger(l, level=logging.WARN)
+
 def setup_scheduler_loggers(config=None):
-    for app in ['scheduler', 'executors', 'jobstores']:
-        for store in ['download', 'list', 'move', 'upload']:
-            l = logging.getLogger('.'.join(['apscheduler', app, store]))
-            _configure_logger(l, config=config, level=logging.WARN)
+    l = logging.getLogger('apscheduler')
+    verbose = 0
+    level = logging.WARN
+    if config and config.verbose:
+        verbose = config.verbose
+    if verbose == 3:
+        level = logging.INFO
+    if verbose == 4:
+        level = logging.DEBUG
+    _configure_logger(l, config=config, level=level)
 
 def setup_logger(name=None, config=None):
     logger = logging.getLogger(name)

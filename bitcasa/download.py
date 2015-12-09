@@ -6,7 +6,7 @@ import logging
 from . import utils
 
 from .file_download import FileDownload
-from .globals import BITCASA, scheduler, connection_pool, drive
+from .globals import BITCASA, scheduler, connection_pool, drive, current_app
 from .jobs import async
 from .models import BitcasaFile, BitcasaFolder
 from .move import _move_file
@@ -51,7 +51,8 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
             raise
 
     for item in folder.items.values():
-        if level + 1 < max_depth and isinstance(item, BitcasaFolder):
+        if ((not max_depth or level + 1 < max_depth) and
+            isinstance(item, BitcasaFolder)):
             if job_id:
                 logger.debug('Creating new download folder job %s',
                              item.path)
@@ -67,6 +68,11 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
 
         elif isinstance(item, BitcasaFile):
             file_path = os.path.join(destination, item.name)
+            if current_app.results.has_download(item.path):
+                logger.debug('File download already exist. Skipping %s',
+                             item.name)
+                continue
+
             if job_id:
                 logger.debug('Creating new download file job %s',
                              item.name)
@@ -84,10 +90,11 @@ def download_file(file_id, size, destination, chunk_size=None, move_to=None,
 
     download = FileDownload(file_id, destination, size, chunk_size=chunk_size,
                             job_id=job_id)
-    download.run()
+    result = download.run()
 
     if move_to:
         if job_id:
             _move_file.async(destination, move_to)
         else:
             _move_file(destination, move_to)
+    return result

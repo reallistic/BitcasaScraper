@@ -35,7 +35,7 @@ class FileDownload(object):
 
     def __init__(self, file_id, destination, size, chunk_size=None,
                  max_retries=None, job_id=None):
-        self.chunk_size = chunk_size or drive.config.chunk_size or None
+        self.chunk_size = chunk_size or drive.config.chunk_size or 1024
         self.destination = destination
         self.job_id = job_id
         self.size = size

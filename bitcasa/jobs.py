@@ -138,9 +138,9 @@ def async(jobstore):
         def delay(*args, **kwargs):
             job_id = uuid.uuid4().hex
             kwargs['job_id'] = job_id
-            scheduler.add_job(obj_to_ref(inner), args=args, kwargs=kwargs,
-                              executor=jobstore, jobstore=jobstore, id=job_id,
-                              misfire_grace_time=None)
+            gevent.spawn(scheduler.add_job, obj_to_ref(inner), args=args,
+                         kwargs=kwargs, executor=jobstore, jobstore=jobstore,
+                         id=job_id, misfire_grace_time=None)
             return job_id
         inner.async = delay
         inner.original_func = f

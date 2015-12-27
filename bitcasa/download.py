@@ -38,6 +38,7 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
         folder = BitcasaFolder.from_meta_data(data['result'], parent=parent,
                                               level=level)
 
+    logger.info('Listing folder %s', folder.path_name)
     logger.debug('Folder path is %s', folder.path)
 
     destination = os.path.join(destination, folder.name)
@@ -52,6 +53,10 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
 
     results = [folder]
     for item in folder.items.values():
+        if not current_app.running:
+            break
+
+        logger.info('List item %s', item.name)
         results.append(item)
 
         if ((not max_depth or level + 1 < max_depth) and
@@ -96,7 +101,8 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
                 download_file(item.path, item.size, file_path,
                               chunk_size=chunk_size, move_to=move_to,
                               max_retries=max_retries)
-    logger.debug('Finished folder list')
+
+    logger.info('Finished listing folder %s', folder.path_name)
     return FolderListResult(results)
 
 
@@ -104,6 +110,7 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
 def download_file(file_id, size, destination, chunk_size=None, move_to=None,
                   max_retries=None, job_id=False):
 
+    logger.info('Download item %s', destination)
     download = FileDownload(file_id, destination, size, chunk_size=chunk_size,
                             max_retries=max_retries, job_id=job_id)
     result = download.run()

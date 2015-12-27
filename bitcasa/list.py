@@ -1,8 +1,13 @@
 import os
+import logging
 
-from .globals import BITCASA, connection_pool
+from .globals import BITCASA, connection_pool, current_app
 from .jobs import async
 from .models import BitcasaFolder, FolderListResult
+
+
+logger = logging.getLogger(__name__)
+
 
 @async(jobstore='list')
 def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
@@ -31,6 +36,8 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
     items = folder.items.values()
     items.sort(key=lambda item: item.name.lower())
     for item in items:
+        if not current_app.running:
+            break
         results.append(item)
 
         #if job_id:
@@ -46,4 +53,5 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
                 results += list_folder(folder=item, level=level+1, max_depth=max_depth,
                                        parent=folder)
 
+    logger.info('Finished listing folder %s', folder.path_name)
     return FolderListResult(results)

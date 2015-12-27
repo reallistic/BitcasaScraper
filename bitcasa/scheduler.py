@@ -27,11 +27,8 @@ class GeventScheduler(GeventSchedulerBase):
 
     def _main_loop(self):
         while self.running:
-            logger.debug('Processing jobs')
             wait_seconds = self._process_jobs()
             if wait_seconds is None:
                 wait_seconds = self.MAX_WAIT_TIME
-            logger.debug('Waiting %s seconds until running next job',
-                         wait_seconds)
             self._event.wait(wait_seconds)
             self._event.clear()

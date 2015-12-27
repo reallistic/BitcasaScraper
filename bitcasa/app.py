@@ -21,6 +21,9 @@ class BitcasaDriveApp(object):
 
     def __init__(self, connection_class=ConnectionPool,
                  drive_class=BitcasaDrive):
+        self.shutdown_start = False
+        self.shutdown_finished = False
+        self._running = False
         parser = BitcasaParser()
         self.args = parser.parse_args()
         self.config = ConfigManager(self.args).get_config()
@@ -31,20 +34,37 @@ class BitcasaDriveApp(object):
     def get_context(self):
         return BitcasaDriveAppContext(self)
 
+    @property
+    def running(self):
+        return self._running
+
     def run(self):
         """Wrapper to make putting things in a huge try catch easier"""
+        self._running = True
         try:
             self._run()
-        except KeyboardInterrupt:
-            logger.info('Goodbye')
         finally:
-            if scheduler and scheduler.running:
-                logger.info('Shutting down scheduler')
-                scheduler.shutdown()
+            self._running = False
+            while not self.shutdown_finished:
+                try:
+                    self.tear_down()
+                except KeyboardInterrupt:
+                    pass
 
-            if self.results:
-                logger.info('Closing results')
-                self.results.close()
+    def tear_down(self):
+        if self.shutdown_start:
+            return
+
+        self.shutdown_start = True
+        if scheduler and scheduler.running:
+            logger.info('Shutting down scheduler')
+            scheduler.shutdown()
+
+        if self.results:
+            logger.info('Closing results')
+            self.results.close()
+        logger.info('goodbye')
+        self.shutdown_finished = True
 
     def _run(self):
         message = 'Working in wrong app context. (%r instead of %r)'

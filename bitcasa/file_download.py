@@ -12,7 +12,7 @@ from requests.packages.urllib3.exceptions import ProtocolError
 from . import utils
 
 from .exceptions import ConnectionError, SizeMismatchError, DownloadError
-from .globals import BITCASA, drive, connection_pool, scheduler
+from .globals import BITCASA, drive, connection_pool, current_app
 from .models import FileDownloadResult
 
 logger = logging.getLogger(__name__)
@@ -45,8 +45,12 @@ class FileDownload(object):
 
         self._finished = False
 
+    @property
+    def alive(self):
+        return current_app and current_app.running
+
     def run(self):
-        logger.debug('downloading file %s', self.destination)
+        logger.info('downloading file %s', self.destination)
         self.mode = 'wb'
         self.seek = 0
         self.size_copied = 0
@@ -73,7 +77,7 @@ class FileDownload(object):
     def _run(self):
         error = None
         error_message = None
-        while not self._finished and self.num_retries > 0:
+        while self.alive and not self._finished and self.num_retries > 0:
             try:
                 ctx = connection_pool.pop()
                 with ctx as conn:
@@ -95,6 +99,9 @@ class FileDownload(object):
                 error = traceback.format_exc()
                 logger.exception('Exception downloading %s', self.destination)
                 error_message = 'Exception downloading %s' % self.destination
+
+        if not self.alive:
+            return None
 
         item = FileDownloadResult(id=self.path,
                                   destination=self.destination,
@@ -138,7 +145,7 @@ class FileDownload(object):
         chunk = None
         num_iterations = 0
         with open(self.destination, self.mode) as tmpfile:
-            while scheduler and scheduler.running:
+            while self.alive:
                 last_chunk = chunk
                 chunk = None
                 num_iterations += 1
@@ -161,19 +168,15 @@ class FileDownload(object):
                 self.size_copied += len(chunk)
                 size_copied_str = utils.convert_size(self.size_copied)
 
-                if self.size_copied > self.size:
-                    logger.warn('Downloaded %s expected %s',
-                                size_copied_str, size_str)
-
                 if progress_time < cr:
                     progress_time = cr + self.PROGRESS_INTERVAL
                     self.report_progress(cr)
 
-        if self.size_copied < self.size:
+        if self.alive and self.size_copied < self.size:
             message = 'Expected %s downloaded %s - %s'
             message = message % (size_str, size_copied_str, req.url)
             raise SizeMismatchError(message)
-        elif self.size_copied > self.size:
+        elif self.alive and self.size_copied > self.size:
             logger.warn('Final size more than expected. Got %s expected %s',
                         size_copied_str, size_str)
         self._finished = True

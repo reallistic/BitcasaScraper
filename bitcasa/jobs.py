@@ -101,6 +101,9 @@ class GeventPoolExecutor(BasePoolExecutor):
 
 
     def shutdown(self, wait=True):
+        if wait and self.__greenlets_spawned > self.__greenlets_died:
+            logger.debug('%s greenlets spawned, %s died. Waiting..',
+                         self.__greenlets_spawned, self.__greenlets_died)
         if wait:
             self._pool.join()
 

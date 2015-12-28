@@ -1,4 +1,3 @@
-import gevent
 import os
 import logging
 
@@ -55,5 +54,4 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
                                        parent=folder)
 
     logger.info('Finished listing folder %s', folder.path_name)
-    gevent.sleep(0.1)
     return FolderListResult(results)

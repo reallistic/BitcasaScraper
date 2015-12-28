@@ -89,6 +89,7 @@ class FileDownload(object):
                 if self.num_retries <= 0:
                     error = traceback.format_exc()
                     error_message = 'Max retries reached'
+                    logger.exception(error_message)
                 else:
                     self.seek = self.size_copied
                     self.mode = 'ab'

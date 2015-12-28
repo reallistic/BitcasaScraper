@@ -42,7 +42,9 @@ class ConfigManager(object):
                         chunk_size=None, config_file='./bitcasa.ini',
                         quiet=False, download_folder='./downloads',
                         jobs_uri='sqlite:///bitcasajobs.sqlite',
-                        results_uri='sqlite:///bitcasaresults.sqlite')
+                        results_uri='sqlite:///bitcasaresults.sqlite',
+                        redis_list_db=0, redis_move_db=1, redis_upload_db=2,
+                        redis_download_db=3)
         return defaults
 
     def _read_sections(self, config):

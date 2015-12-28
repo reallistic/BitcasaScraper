@@ -88,8 +88,24 @@ class BitcasaParser(argparse.ArgumentParser):
             help='Set the base64 folder path to start list/download')
 
         self.iobase_parser.add_argument('--jobs-uri', dest='jobs_uri',
-            help=('sqlite connection string to store jobs. '
+            help=('sql/redis connection string to store jobs. '
                   '(default: sqlite:///bitcasajobs.sqlite'))
+
+        self.iobase_parser.add_argument('--redis-list-db', type=int,
+                dest='redis_list_db',
+                help='redis db number to store list jobs in')
+
+        self.iobase_parser.add_argument('--redis-move-db', type=int,
+                dest='redis_move_db',
+                help='redis db number to store move jobs in')
+
+        self.iobase_parser.add_argument('--redis-upload-db', type=int,
+                dest='redis_upload_db',
+                help='redis db number to store upload jobs in')
+
+        self.iobase_parser.add_argument('--redis-download-db', type=int,
+                dest='redis_download_db',
+                help='redis db number to store download jobs in')
 
         self.iobase_parser.add_argument('--results-uri', dest='results_uri',
             help=('sqlite connection string to store job results. '

@@ -64,12 +64,12 @@ class FileDownload(object):
         if self.seek > self.size:
             self.seek = 0
         elif self.seek == self.size:
-            logger.debug('File of equal name and size exist. '
+            logger.info('File of equal name and size exist. '
                          'Nothing to download')
             self._finished = True
         elif self.seek > 0:
             self.size_copied += self.seek
-            logger.info('continuing download')
+            logger.debug('continuing download from %s', self.seek)
             self.mode = 'ab'
 
         return self._run()
@@ -119,10 +119,10 @@ class FileDownload(object):
         if self.seek != self.size:
             cr = time.time()
             speed = utils.get_speed(self.size_copied-self.seek, (cr-self.st))
-            logger.debug('Finished downloading file %s at %s',
+            logger.info('Finished downloading file %s at %s',
                          self.destination, speed)
         else:
-            logger.debug('Finished downloading file %s', self.destination)
+            logger.info('Finished downloading file %s', self.destination)
 
         return item
 

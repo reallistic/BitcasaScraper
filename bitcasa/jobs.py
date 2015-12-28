@@ -2,6 +2,7 @@
 import logging
 import gevent
 import functools
+import redis
 import sys
 import time
 import uuid
@@ -13,6 +14,7 @@ from gevent.queue import Queue
 from apscheduler.util import obj_to_ref
 
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.jobstores.redis import RedisJobStore
 from apscheduler.executors.pool import BasePoolExecutor
 from apscheduler.executors.base import (MaxInstancesReachedError,
                                         run_job as base_run_job)
@@ -150,6 +152,20 @@ def async(jobstore):
         return inner
     return wrapper
 
+REDIS_DBS = {'list': 0,
+             'upload': 1,
+             'move': 2,
+             'download': 3}
+
+def get_jobstore(uri, db_name, config):
+    if uri.startswith('redis'):
+        connection_pool = redis.ConnectionPool.from_url(uri)
+        db = REDIS_DBS[db_name]
+        if config:
+            db = getattr(config, 'redis_' + db_name + '_db', None) or db
+        return RedisJobStore(connection_pool=connection_pool, db=db)
+
+    return SQLAlchemyJobStore(url=uri, tablename=db_name + '_jobs')
 
 def setup_scheduler(config=None):
     list_workers = 4
@@ -159,7 +175,7 @@ def setup_scheduler(config=None):
 
     total_data_workers = 0
 
-    sqlite_uri = 'sqlite:///bitcasajobs.sqlite'
+    uri = 'sqlite:///bitcasajobs.sqlite'
     if config:
         if config.list_workers:
             list_workers = config.list_workers
@@ -172,7 +188,7 @@ def setup_scheduler(config=None):
         if config.download_workers:
             download_workers = config.download_workers
         if config.jobs_uri:
-            sqlite_uri = config.jobs_uri
+            uri = config.jobs_uri
 
         total_data_workers = list_workers + download_workers
         if (config.max_connections and
@@ -180,14 +196,10 @@ def setup_scheduler(config=None):
             logger.warn('Using more workers than available connections: %s/%s',
                         total_data_workers, config.max_connections)
 
-    jobstores = {'list': SQLAlchemyJobStore(url=sqlite_uri,
-                                            tablename='list_jobs'),
-                 'upload': SQLAlchemyJobStore(url=sqlite_uri,
-                                              tablename='upload_jobs'),
-                 'move': SQLAlchemyJobStore(url=sqlite_uri,
-                                            tablename='move_jobs'),
-                 'download': SQLAlchemyJobStore(url=sqlite_uri,
-                                                tablename='download_jobs')}
+    jobstores = {'list': get_jobstore(uri, 'list', config),
+                 'upload': get_jobstore(uri, 'upload', config),
+                 'move': get_jobstore(uri, 'move', config),
+                 'download': get_jobstore(uri, 'download', config)}
     executors = {'list': GeventPoolExecutor(list_workers),
                  'download': GeventPoolExecutor(download_workers),
                  'move': GeventPoolExecutor(move_workers),

@@ -1,5 +1,6 @@
 import os
 import logging
+import gevent
 
 from .globals import BITCASA, connection_pool, current_app
 from .jobs import async
@@ -22,8 +23,20 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
 
     url = os.path.join(BITCASA.ENDPOINTS.root_folder, url.lstrip('/'))
 
-    with connection_pool.pop() as conn:
-        data = conn.request(url)
+    num_retries = 30
+    while num_retries > 0:
+        try:
+            with connection_pool.pop() as conn:
+                data = conn.request(url)
+            break
+        except:
+            logger.exception('Retrying list')
+            num_retries -= 1
+            gevent.sleep(30-num_retries)
+
+    if num_retries <= 0:
+        logger.error('Listing folder at url %s failed', url)
+        return
 
     if folder:
         child_items = data['result'].get('items')

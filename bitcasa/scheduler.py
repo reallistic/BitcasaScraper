@@ -44,7 +44,7 @@ class GeventScheduler(GeventSchedulerBase):
         self.wakeup()
 
     def add_queued_jobs(self):
-        logger.info('Adding queued job')
+        logger.debug('Adding queued jobs')
         while True:
             try:
                 args, kwargs = self._queue.get_nowait()

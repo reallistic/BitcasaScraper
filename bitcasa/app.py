@@ -103,7 +103,7 @@ class BitcasaDriveApp(object):
                               url=self.config.bitcasa_folder)
 
             scheduler.wait()
-            self.results.list()
+            self.results.list_results()
 
         if self.config.command == 'logout':
             connection_pool.logout()

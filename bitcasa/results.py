@@ -76,8 +76,9 @@ class ResultRecorder(object):
             self.save_download_result(event.retval)
 
     def list_results(self):
-        for item in self.db.query(BitcasaItem).order_by(BitcasaItem.path).all():
-            print '%s - %s' % (item.path_name, item.name)
+        q = self.db.query(BitcasaItem).order_by(BitcasaItem.path_name).all()
+        for item in q:
+            print item.path_name
 
     def close(self):
         self.db.close()

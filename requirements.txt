@@ -3,6 +3,7 @@ cryptography==0.9.3
 dryscrape==0.9.1
 Flask==0.10.1
 gevent==1.0.2
+redis
 ndg-httpsclient==0.4.0
 pyasn1==0.1.8
 pyOpenSSL==0.15.1

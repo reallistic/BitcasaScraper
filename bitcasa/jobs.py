@@ -56,21 +56,21 @@ class GeventPoolExecutor(BasePoolExecutor):
         self.__greenlets_died = 0
         self._queue = Queue()
         self._monitor = None
+        self._shutdown = False
 
     def _monitor_pool(self):
         while True:
             g = self._queue.get()
             self._pool.start(g)
 
+            if self._shutdown:
+                break
+
     def _queue_spawn(self, greenlet):
         self._queue.put_nowait(greenlet)
         if not self._monitor:
             self._monitor = gevent.spawn(copy_current_app_ctx(self._monitor_pool))
             self._monitor.gid = 'queue monitor'
-
-    def submit_job(self, job, run_times):
-        super(GeventPoolExecutor, self).submit_job(job, run_times)
-        gevent.sleep(1)
 
     def _do_submit_job(self, job, run_times):
         with self.__count_lock:
@@ -88,6 +88,8 @@ class GeventPoolExecutor(BasePoolExecutor):
             else:
                 self._run_job_success(job.id, events)
 
+            self._scheduler._job_done()
+
 
         g = self._pool.greenlet_class(copy_current_app_ctx(run_job), job,
                                       job._jobstore_alias, run_times,
@@ -101,6 +103,7 @@ class GeventPoolExecutor(BasePoolExecutor):
 
 
     def shutdown(self, wait=True):
+        self._shutdown = True
         if wait and self.__greenlets_spawned > self.__greenlets_died:
             logger.debug('%s greenlets spawned, %s died. Waiting..',
                          self.__greenlets_spawned, self.__greenlets_died)

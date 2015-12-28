@@ -95,16 +95,14 @@ class BitcasaDriveApp(object):
                                   max_attempts=self.config.max_attempts,
                                   max_retries=self.config.max_retries)
 
-            executor = scheduler._lookup_executor('download')
-            executor.wait()
+            scheduler.wait()
 
         if self.config.command == 'list':
             logger.debug('doing list')
             list_folder.async(max_depth=self.config.max_depth,
                               url=self.config.bitcasa_folder)
 
-            executor = scheduler._lookup_executor('list')
-            executor.wait()
+            scheduler.wait()
             self.results.list()
 
         if self.config.command == 'logout':

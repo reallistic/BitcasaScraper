@@ -69,7 +69,7 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
         if not current_app.running:
             break
 
-        logger.info('List item %s', item.name)
+        logger.debug('List item %s', item.name)
         results.append(item)
 
         if ((not max_depth or level + 1 < max_depth) and

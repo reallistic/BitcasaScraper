@@ -42,6 +42,7 @@ class FileDownload(object):
         self.path = file_id
 
         self.num_retries = max_retries or 3
+        self.num_size_retries = 3
 
         self._finished = False
 
@@ -77,14 +78,28 @@ class FileDownload(object):
     def _run(self):
         error = None
         error_message = None
-        while self.alive and not self._finished and self.num_retries > 0:
+        max_retries = self.num_retries
+        while (self.alive and not self._finished and self.num_retries > 0 and
+               self.num_size_retries > 0):
             try:
                 ctx = connection_pool.pop()
                 with ctx as conn:
                     # throw away this connection
                     ctx.clear()
                     self._download_file(conn)
-            except (ConnectionError, RequestException, SizeMismatchError):
+            except SizeMismatchError:
+                self.num_size_retries -= 1
+                if self.num_size_retries <= 0:
+                    error = traceback.format_exc()
+                    error_message = 'Max retries reached'
+                    logger.exception(error_message)
+                else:
+                    self.seek = self.size_copied
+                    self.mode = 'ab'
+                    logger.exception('Retrying download for %s',
+                                     self.destination)
+                    gevent.sleep(5)
+            except (ConnectionError, RequestException):
                 self.num_retries -= 1
                 if self.num_retries <= 0:
                     error = traceback.format_exc()
@@ -95,7 +110,7 @@ class FileDownload(object):
                     self.mode = 'ab'
                     logger.exception('Retrying download for %s',
                                      self.destination)
-                    gevent.sleep(5)
+                    gevent.sleep(max_retries - self.num_retries)
             except:
                 error = traceback.format_exc()
                 logger.exception('Exception downloading %s', self.destination)

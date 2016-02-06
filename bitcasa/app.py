@@ -8,10 +8,11 @@ from .ctx import BitcasaDriveAppContext
 from .download import download_folder
 from .list import list_folder
 from .drive import BitcasaDrive
-from .globals import scheduler, drive, connection_pool, current_app
+from .globals import scheduler, drive, connection_pool, current_app, rq
 from .jobs import setup_scheduler
 from .logger import setup_logger, setup_misc_loggers, setup_scheduler_loggers
 from .results import ResultRecorder
+from .redis_queue import RQ
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +73,10 @@ class BitcasaDriveApp(object):
         assert current_app == self, message
 
         if self.config.command in ['list', 'download']:
-            scheduler.start()
-            self.results = ResultRecorder(self.config)
-            self.results.listen()
+            if self.config.worker == 'apscheduler':
+                scheduler.start()
+                self.results = ResultRecorder(self.config)
+                self.results.listen()
 
         if self.config.command == 'shell':
             import code
@@ -102,8 +104,11 @@ class BitcasaDriveApp(object):
             list_folder.async(max_depth=self.config.max_depth,
                               url=self.config.bitcasa_folder)
 
-            scheduler.wait()
-            self.results.list_results()
+            if self.config.worker == 'rq':
+                rq.create_worker().work(burst=True)
+            elif self.config.worker == 'apscheduler':
+                scheduler.wait()
+                self.results.list_results()
 
         if self.config.command == 'logout':
             connection_pool.logout()
@@ -136,3 +141,6 @@ class BitcasaDriveApp(object):
     def setup_scheduler(self):
         app_scheduler = setup_scheduler(config=self.config)
         return app_scheduler
+
+    def setup_rq(self):
+        return RQ(config=self.config)

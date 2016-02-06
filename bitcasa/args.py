@@ -87,6 +87,10 @@ class BitcasaParser(argparse.ArgumentParser):
             dest='bitcasa_folder',
             help='Set the base64 folder path to start list/download')
 
+        self.iobase_parser.add_argument('--worker',
+            choices=('apscheduler', 'rq'),
+            help='Worker type to use. default: apscheduler')
+
         self.iobase_parser.add_argument('--jobs-uri', dest='jobs_uri',
             help=('sql/redis connection string to store jobs. '
                   '(default: sqlite:///bitcasajobs.sqlite'))

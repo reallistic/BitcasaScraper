@@ -3,14 +3,14 @@ import logging
 import gevent
 
 from .globals import BITCASA, connection_pool, current_app
-from .jobs import async
+from .async import async
 from .models import BitcasaFolder, FolderListResult
 
 
 logger = logging.getLogger(__name__)
 
 
-@async(jobstore='list')
+@async(jobstore='list', queue='list')
 def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
                 parent=None, gid=None):
     if folder:

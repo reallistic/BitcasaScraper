@@ -131,27 +131,6 @@ class GeventPoolExecutor(BasePoolExecutor):
         self._pool.join()
 
 
-def async(jobstore):
-    def wrapper(f):
-        #TODO: assert the function accepts the job_id kwarg
-
-        @functools.wraps(f)
-        def inner(*args, **kwargs):
-            return f(*args, **kwargs)
-
-        @functools.wraps(f)
-        def delay(*args, **kwargs):
-            job_id = uuid.uuid4().hex
-            kwargs['job_id'] = job_id
-            scheduler.add_job(obj_to_ref(inner), args=args, kwargs=kwargs,
-                              executor=jobstore, jobstore=jobstore, id=job_id,
-                              misfire_grace_time=None)
-            return job_id
-        inner.async = delay
-        inner.original_func = f
-        return inner
-    return wrapper
-
 REDIS_DBS = {'list': 0,
              'upload': 1,
              'move': 2,
@@ -175,7 +154,6 @@ def setup_scheduler(config=None):
 
     total_data_workers = 0
 
-    uri = 'sqlite:///bitcasajobs.sqlite'
     if config:
         if config.list_workers:
             list_workers = config.list_workers
@@ -187,8 +165,7 @@ def setup_scheduler(config=None):
             move_workers = config.move_workers
         if config.download_workers:
             download_workers = config.download_workers
-        if config.jobs_uri:
-            uri = config.jobs_uri
+        uri = config.jobs_uri
 
         total_data_workers = list_workers + download_workers
         if (config.max_connections and

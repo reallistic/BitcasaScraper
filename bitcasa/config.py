@@ -44,7 +44,7 @@ class ConfigManager(object):
                         jobs_uri='sqlite:///bitcasajobs.sqlite',
                         results_uri='sqlite:///bitcasaresults.sqlite',
                         redis_list_db=0, redis_move_db=1, redis_upload_db=2,
-                        redis_download_db=3)
+                        redis_download_db=3, worker='apscheduler')
         return defaults
 
     def _read_sections(self, config):

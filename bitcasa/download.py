@@ -8,14 +8,14 @@ from . import utils
 
 from .file_download import FileDownload
 from .globals import BITCASA, scheduler, connection_pool, drive, current_app
-from .jobs import async
+from .async import async
 from .models import BitcasaFile, BitcasaFolder, FolderListResult
 from .move import _move_file
 
 logger = logging.getLogger(__name__)
 
 
-@async(jobstore='download')
+@async(jobstore='download', queue='download')
 def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
                     parent=None, destination='./', chunk_size=None,
                     move_to=None, max_retries=None, max_attempts=None):
@@ -119,7 +119,7 @@ def download_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
     return FolderListResult(results)
 
 
-@async(jobstore='download')
+@async(jobstore='download', queue='download_file')
 def download_file(file_id, size, destination, chunk_size=None, move_to=None,
                   max_retries=None, job_id=False):
 

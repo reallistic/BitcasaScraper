@@ -8,27 +8,31 @@ class BitcasaDriveAppContext(object):
     connection_pool = None
     drive = None
     scheduler = None
+    rq = None
 
     logout_on_exit = None
 
-    def __init__(self, app, _connection_pool=None, _drive=None,
-                 _scheduler=None):
+    def __init__(self, app, connection_pool=None, drive=None,
+                 scheduler=None, rq=None):
         self.app = app
 
-        if _connection_pool:
-            self.connection_pool = _connection_pool
+        if connection_pool:
+            self.connection_pool = connection_pool
 
-        if _drive:
-            self.drive = _drive
+        if drive:
+            self.drive = drive
 
-        if _scheduler:
-            self.scheduler = _scheduler
+        if scheduler:
+            self.scheduler = scheduler
+
+        if rq:
+            self.rq = rq
 
         self.logout_on_exit = True
 
     def copy(self):
         return self.__class__(self.app, self.connection_pool, self.drive,
-                              self.scheduler)
+                              self.scheduler, self.rq)
 
     def push(self):
         _app_ctx_stack.push(self)
@@ -50,6 +54,9 @@ class BitcasaDriveAppContext(object):
 
         if not self.drive:
             self.drive = self.app.setup_drive()
+
+        if not self.rq:
+            self.rq = self.app.setup_rq()
 
         return self
 

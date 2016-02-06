@@ -16,12 +16,12 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
     if folder:
         url = folder.path
     elif not url:
-        url = BITCASA.ENDPOINTS.root_folder
+        url = '/'
 
     if not parent:
         parent = '/'.join(url.split('/')[:-1])
 
-    url = os.path.join(BITCASA.ENDPOINTS.root_folder, url.lstrip('/'))
+    url = os.path.join(BITCASA.ENDPOINTS.root_folder.rstrip('/'), url.lstrip('/'))
 
     num_retries = 30
     while num_retries > 0:

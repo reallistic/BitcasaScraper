@@ -12,7 +12,7 @@ from .globals import scheduler, drive, connection_pool, current_app, rq
 from .jobs import setup_scheduler
 from .logger import setup_logger, setup_misc_loggers, setup_scheduler_loggers
 from .results import ResultRecorder
-from .redis_queue import RQ
+from .redis_queue import create_worker
 
 logger = logging.getLogger(__name__)
 
@@ -71,56 +71,71 @@ class BitcasaDriveApp(object):
         message = 'Working in wrong app context. (%r instead of %r)'
         message = message % (current_app, self)
         assert current_app == self, message
+        func = getattr(self, self.config.command)
+        func()
 
-        if self.config.command in ['list', 'download']:
-            self.results = ResultRecorder(self.config)
-            if self.config.worker == 'apscheduler':
-                scheduler.start()
-                self.results.listen(scheduler)
+    def setup_results(self):
+        self.results = ResultRecorder(self.config)
+        if self.config.worker == 'apscheduler':
+            scheduler.start()
+            self.results.listen(scheduler)
+        elif self.config.worker == 'rq':
+            self.results.listen(rq)
 
-        if self.config.command == 'shell':
-            import code
-            local_params = dict(drive=drive, config=self.config,
-                                pool=connection_pool, scheduler=scheduler)
-            code.interact(local=local_params)
+    def shell(self):
+        import code
+        local_params = dict(drive=drive, config=self.config,
+                            pool=connection_pool, scheduler=scheduler)
+        code.interact(local=local_params)
 
-        if self.config.command == 'download':
-            logger.debug('doing download')
-            if self.config.max_retries <= 0:
-                logger.warn('Trying to disable max retries could cause '
-                            'the program to run forever. '
-                            'Setting max retries to 3')
-                # Note this override is done in the FileDownload class
-            download_folder.async(url=self.config.bitcasa_folder,
-                                  destination=self.config.download_folder,
-                                  max_depth=self.config.max_depth,
-                                  max_attempts=self.config.max_attempts,
-                                  max_retries=self.config.max_retries)
+    def download(self):
+        self.setup_results()
+        logger.debug('doing download')
+        if self.config.max_retries <= 0:
+            logger.warn('Trying to disable max retries could cause '
+                        'the program to run forever. '
+                        'Setting max retries to 3')
+            # Note this override is done in the FileDownload class
+        download_folder.async(url=self.config.bitcasa_folder,
+                              destination=self.config.download_folder,
+                              max_depth=self.config.max_depth,
+                              max_attempts=self.config.max_attempts,
+                              max_retries=self.config.max_retries)
 
+        if self.config.worker == 'rq':
+            rq.work(burst=True)
+        elif self.config.worker == 'apscheduler':
             scheduler.wait()
 
-        if self.config.command == 'list':
-            logger.debug('doing list')
-            list_folder.async(max_depth=self.config.max_depth,
-                              url=self.config.bitcasa_folder)
+    def list(self):
+        self.setup_results()
+        logger.debug('doing list')
+        list_folder.async(max_depth=self.config.max_depth,
+                          url=self.config.bitcasa_folder)
 
-            if self.config.worker == 'rq':
-                worker = rq.create_worker()
-                self.results.listen(worker)
-                worker.work(burst=True)
-            elif self.config.worker == 'apscheduler':
-                scheduler.wait()
-                self.results.list_results()
+        if self.config.worker == 'rq':
+            self.results.listen(rq)
+            rq.work(burst=True)
+        elif self.config.worker == 'apscheduler':
+            scheduler.wait()
 
-        if self.config.command == 'logout':
-            connection_pool.logout()
-            with open(self.config.cookie_file, 'w+'):
-                pass
+            self.results.list_results()
 
-        if self.config.command == 'authenticate':
-            message = 'Username and password must be specified'
-            assert all((self.config.username, self.config.password)), message
-            connection_pool._store_cookies(self.config.cookie_file)
+    def logout(self):
+        connection_pool.logout()
+        with open(self.config.cookie_file, 'w+'):
+            pass
+
+    def authenticate(self):
+        message = 'Username and password must be specified'
+        assert all((self.config.username, self.config.password)), message
+        connection_pool._store_cookies(self.config.cookie_file)
+
+    def work(self):
+        self.setup_results()
+        if self.config.worker != 'rq':
+            raise RuntimeError('Only RQ supports worker mode')
+        rq.work()
 
     def setup_connection_pool(self):
         return self.connection_class(config=self.config).get_context()
@@ -145,4 +160,5 @@ class BitcasaDriveApp(object):
         return app_scheduler
 
     def setup_rq(self):
-        return RQ(config=self.config)
+        return create_worker(self.config.jobs_uri,
+                             pool_size=self.config.list_workers)

@@ -133,13 +133,22 @@ class BitcasaWorker(GeventWorker):
     _queues = None
     _success_listeners = None
     _failed_listeners = None
+    _timeout = None
 
     def __init__(self, *args, **kwargs):
         self.max_attempts = kwargs.pop('max_attempts')
+        self._timeout = kwargs.pop('timeout')
         self._queues = {}
         self._success_listeners = set()
         self._failed_listeners = set()
         super(BitcasaWorker, self).__init__(*args, **kwargs)
+        self.failed_queue = MessageFailedQueue(connection=self.connection)
+
+    def get_queue(self, queue_name):
+        queue = BitcasaQueue(queue_name,
+                        connection=self.connection,
+                        default_timeout=self._timeout)
+        return queue
 
     @property
     def queues(self):
@@ -263,66 +272,15 @@ class BitcasaWorker(GeventWorker):
                              job.get_loggable_dict())
 
 
-class RQ(object):
-
-    _queue = None
-    _failed_queue = None
-    _timeout = None
-    _connection = None
-    max_attempts = None
-    result_ttl = 1800
-
-    def __init__(self, config):
-        self._redis_url = config.jobs_uri
-        self._timeout = 0
-        self.max_attempts = 1
-
-    def clear_empty_queues(self):
-        queues = self.get_all_queues()
-        empty_queues = [queue for queue in queues if queue.is_empty()]
-        for queue in empty_queues:
-            if queue.name not in ['failed', 'default']:
-                self.connection.delete(queue.key)
-                self.connection.srem(queue.redis_queues_keys, queue.key)
-
-    @property
-    def connection(self):
-        # Re-use connections if they are determined equivalent.
-        if not self._connection:
-            self._connection = redis.from_url(self._redis_url)
-
-        return self._connection
-
-    @property
-    def queue(self):
-        if not self._queue:
-            self._queue = BitcasaQueue('default',
-                                  connection=self.connection,
-                                  default_timeout=self._timeout)
-        return self._queue
-
-    def get_queue(self, queue_name):
-        queue = BitcasaQueue(queue_name,
-                        connection=self.connection,
-                        default_timeout=self._timeout)
-        return queue
-
-    def get_all_queues(self):
-        return BitcasaQueue.all(self.connection)
-
-    @property
-    def failed_queue(self):
-        if not self._failed_queue:
-            self._failed_queue = MessageFailedQueue(connection=self.connection)
-        return self._failed_queue
-
-    def create_worker(self, **kwargs):
-        """Creates a gevent worker to consume a queue
-
-        Also note that we do not initialize the worker with a specific set
-        of queues since it is itself responsible for discovering all
-        queues on the given connection.
-        """
-        return BitcasaWorker(self.queue, connection=self.connection,
-                             max_attempts=self.max_attempts,
-                             default_result_ttl=self.result_ttl, **kwargs)
+def create_worker(redis_url, timeout=None, max_attempts=None,
+                  result_ttl=None, pool_size=None):
+    timeout = timeout or 0
+    max_attempts = max_attempts or 1
+    result_ttl = result_ttl or 1800
+    connection = redis.from_url(redis_url)
+    queue = BitcasaQueue('default', connection=connection,
+                         default_timeout=timeout)
+    return BitcasaWorker(queue, connection=connection,
+                         max_attempts=max_attempts,
+                         default_result_ttl=result_ttl,
+                         timeout=timeout, pool_size=pool_size)

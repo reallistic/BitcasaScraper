@@ -111,7 +111,7 @@ class AuthenticationManager(object):
 
         with RequestHelper(self, validate=validate) as req:
             return req.send('GET', url, raw=True, timeout=120,
-                            headers=headers)
+                            headers=headers, stream=True)
 
     def request(self, endpoint, method='GET', ignore_session_state=False,
                 **kwargs):

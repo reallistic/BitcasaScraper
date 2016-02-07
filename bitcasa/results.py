@@ -3,7 +3,6 @@ import logging
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 
 from .exceptions import DownloadError
 from .globals import scheduler
@@ -20,9 +19,9 @@ class ResultRecorder(object):
         Base.metadata.create_all(engine)
         self.db = Session(engine)
 
-    def listen(self):
-        scheduler.add_listener(self.record_success, mask=EVENT_JOB_EXECUTED)
-        scheduler.add_listener(self.record_error, mask=EVENT_JOB_ERROR)
+    def listen(self, worker):
+        worker.on_job_success(self.record_success)
+        worker.on_job_fail(self.record_error)
 
     def record_error(self, event):
         logger.debug('Received event with error: %r', event.exception)

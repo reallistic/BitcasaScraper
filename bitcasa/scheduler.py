@@ -5,6 +5,7 @@ import logging
 from gevent.event import Event
 from gevent.queue import JoinableQueue
 
+from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.schedulers.gevent import GeventScheduler as GeventSchedulerBase
 
@@ -58,3 +59,9 @@ class GeventScheduler(GeventSchedulerBase):
 
         while self._queue.qsize():
             self._queue.join()
+
+    def on_job_fail(self, cb):
+        self.add_listener(cb, mask=EVENT_JOB_ERROR)
+
+    def on_job_success(self, cb):
+        self.add_listener(cb, mask=EVENT_JOB_EXECUTED)

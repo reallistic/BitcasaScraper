@@ -9,8 +9,8 @@ import traceback
 #import newrelic.agent
 
 # Disable log handler setup before importing rq related code.
-#import rq.logutils
-#rq.logutils.setup_loghandlers = lambda: None
+import rq.logutils
+rq.logutils.setup_loghandlers = lambda: None
 
 from collections import OrderedDict
 from datetime import datetime, timedelta
@@ -29,6 +29,16 @@ from .jobs import copy_current_app_ctx
 
 logger = logging.getLogger(__name__)
 
+
+
+class JobResult(object):
+    exception = None
+    retval = None
+
+    def __init__(self, job, exc=None):
+        self.exception = exc
+        self.retval = job.result
+        self.job = job
 
 
 class BitcasaJob(Job):
@@ -119,12 +129,16 @@ class BitcasaWorker(GeventWorker):
     job_class = BitcasaJob
     queue_class = BitcasaQueue
     max_attempts = None
-    _queues = None
     discard_on = (DownloadError, )
+    _queues = None
+    _success_listeners = None
+    _failed_listeners = None
 
     def __init__(self, *args, **kwargs):
         self.max_attempts = kwargs.pop('max_attempts')
         self._queues = {}
+        self._success_listeners = set()
+        self._failed_listeners = set()
         super(BitcasaWorker, self).__init__(*args, **kwargs)
 
     @property
@@ -166,15 +180,33 @@ class BitcasaWorker(GeventWorker):
         child_greenlet.link(job_done)
         self.children.append(child_greenlet)
 
+    def on_job_fail(self, cb):
+        self._failed_listeners.add(cb)
+
+    def on_job_success(self, cb):
+        self._success_listeners.add(cb)
+
+    def execute_listeners(self, job, result, exc=None):
+        if result:
+            for listener in self._success_listeners:
+                listener(JobResult(job))
+        else:
+            for listener in self._failed_listeners:
+                listener(JobResult(job, exc=exc))
+
     def perform_job(self, job):
         # Without this try catch statement we would not see any tracebacks
         # on errors raised outside of the queued function. In other words,
         # bugs in flask-rq inside of greenlets would fail silently.
         try:
-            return super(BitcasaWorker, self).perform_job(job)
-        except Exception:
+            rv = super(BitcasaWorker, self).perform_job(job)
+            if rv:
+                self.execute_listeners(job, rv)
+            return rv
+        except Exception as err:
             logger.exception('Error performing job %r',
                              job.get_loggable_dict())
+            self.execute_listeners(job, False, exc=err)
             return False
 
     def handle_exception(self, job, *exc_info):
@@ -217,6 +249,7 @@ class BitcasaWorker(GeventWorker):
             logger.exception('Error performing job %r',
                              job.get_loggable_dict(), exc_info=exc_info)
             self.failed_queue.quarantine(job, exc_info=exc_string)
+            self.execute_listeners(job, False, exc=exc_value)
         else:
             # Otherwise we mark the job as queued again and resubmit it to
             # the queue it came from.

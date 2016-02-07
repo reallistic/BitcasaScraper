@@ -73,10 +73,10 @@ class BitcasaDriveApp(object):
         assert current_app == self, message
 
         if self.config.command in ['list', 'download']:
+            self.results = ResultRecorder(self.config)
             if self.config.worker == 'apscheduler':
                 scheduler.start()
-                self.results = ResultRecorder(self.config)
-                self.results.listen()
+                self.results.listen(scheduler)
 
         if self.config.command == 'shell':
             import code
@@ -105,7 +105,9 @@ class BitcasaDriveApp(object):
                               url=self.config.bitcasa_folder)
 
             if self.config.worker == 'rq':
-                rq.create_worker().work(burst=True)
+                worker = rq.create_worker()
+                self.results.listen(worker)
+                worker.work(burst=True)
             elif self.config.worker == 'apscheduler':
                 scheduler.wait()
                 self.results.list_results()

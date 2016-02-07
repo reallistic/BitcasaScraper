@@ -27,6 +27,10 @@ class BitcasaParser(argparse.ArgumentParser):
             parents=[self.base_parser], help='Remove bitcasa authentication')
 
     def create_action_parsers(self):
+        self.work_parser = self.actions.add_parser('work',
+            parents=[self.base_parser, self.iobase_parser],
+            help='Runs the rq gevent worker')
+
         self.list_parser = self.actions.add_parser('list',
             parents=[self.base_parser, self.iobase_parser],
             help='List the root of your bitcasa drive')

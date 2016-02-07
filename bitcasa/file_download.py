@@ -142,6 +142,7 @@ class FileDownload(object):
         return item
 
     def _download_file(self, conn):
+        self.st = time.time()
         url = os.path.join(BITCASA.ENDPOINTS.download, self.path.lstrip('/'))
         req = conn.make_download_request(url, seek=self.seek)
         # We probably won't be able to download anything, but that
@@ -149,13 +150,9 @@ class FileDownload(object):
         if req.raw._fp and not req.raw._fp.isclosed():
             req.raw._fp.fp._sock.settimeout(100)
 
-        self.st = time.time()
         content = req.iter_content(self.chunk_size)
         progress_time = self.st + self.PROGRESS_INTERVAL
         timespan = 0
-
-        size_str = utils.convert_size(self.size)
-        size_copied_str = utils.convert_size(self.size_copied)
 
         last_chunk = None
         chunk = None
@@ -182,11 +179,13 @@ class FileDownload(object):
                 tmpfile.write(chunk)
                 cr = time.time()
                 self.size_copied += len(chunk)
-                size_copied_str = utils.convert_size(self.size_copied)
 
                 if progress_time < cr:
                     progress_time = cr + self.PROGRESS_INTERVAL
                     self.report_progress(cr)
+
+        size_copied_str = utils.convert_size(self.size_copied)
+        size_str = utils.convert_size(self.size)
 
         if self.alive and self.size_copied < self.size:
             message = 'Expected %s downloaded %s - %s'

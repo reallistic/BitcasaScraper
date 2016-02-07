@@ -2,6 +2,8 @@
 """RQ extension for Flask"""
 
 import logging
+import gevent
+import signal
 import sys
 import redis
 import random
@@ -204,19 +206,42 @@ class BitcasaWorker(GeventWorker):
                 listener(JobResult(job, exc=exc))
 
     def perform_job(self, job):
+
+        # Always ignore Ctrl+C in the work horse, as it might abort the
+        # currently running job.
+        # The main worker catches the Ctrl+C and requests graceful shutdown
+        # after the current work is done.  When cold shutdown is requested, it
+        # kills the current job anyway.
+        def save_job():
+            logger.warn('Requeuing current job')
+            job.set_status(Status.QUEUED)
+            queue_lookup = dict([(q.name, q) for q in self.queues])
+            queue = queue_lookup.get(job.origin)
+            if queue:
+                queue.enqueue_job(job)
+            else:
+                logger.error('Queue disappeared. job=%r',
+                             job.get_loggable_dict())
+
+        sig_int = gevent.signal(signal.SIGINT, save_job)
+        sig_term = gevent.signal(signal.SIGTERM, save_job)
+
         # Without this try catch statement we would not see any tracebacks
         # on errors raised outside of the queued function. In other words,
         # bugs in flask-rq inside of greenlets would fail silently.
+        rv = False
         try:
             rv = super(BitcasaWorker, self).perform_job(job)
             if rv:
                 self.execute_listeners(job, rv)
-            return rv
         except Exception as err:
             logger.exception('Error performing job %r',
                              job.get_loggable_dict())
             self.execute_listeners(job, False, exc=err)
-            return False
+
+        sig_int.cancel()
+        sig_term.cancel()
+        return rv
 
     def handle_exception(self, job, *exc_info):
         """Overrides handler for failed jobs
@@ -280,6 +305,7 @@ def create_worker(redis_url, timeout=None, max_attempts=None,
     connection = redis.from_url(redis_url)
     queue = BitcasaQueue('default', connection=connection,
                          default_timeout=timeout)
+    logger.debug('pool_size is %s', pool_size)
     return BitcasaWorker(queue, connection=connection,
                          max_attempts=max_attempts,
                          default_result_ttl=result_ttl,

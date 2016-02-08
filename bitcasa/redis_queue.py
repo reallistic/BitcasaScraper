@@ -136,6 +136,7 @@ class BitcasaWorker(GeventWorker):
     _success_listeners = None
     _failed_listeners = None
     _timeout = None
+    __greenlets_spawned = None
 
     def __init__(self, *args, **kwargs):
         self.max_attempts = kwargs.pop('max_attempts')
@@ -145,6 +146,7 @@ class BitcasaWorker(GeventWorker):
         self._failed_listeners = set()
         super(BitcasaWorker, self).__init__(*args, **kwargs)
         self.failed_queue = MessageFailedQueue(connection=self.connection)
+        self.__greenlets_spawned = 0
 
     def get_queue(self, queue_name):
         queue = BitcasaQueue(queue_name,
@@ -187,8 +189,10 @@ class BitcasaWorker(GeventWorker):
                 queue.enqueue_dependents(job)
 
         perform_job = copy_current_app_ctx(self.perform_job)
+        self.__greenlets_spawned += 1
         child_greenlet = self.gevent_pool.spawn(perform_job, job)
         child_greenlet.link(job_done)
+        child_greenlet.gid = 'Thread-%s' % self.__greenlets_spawned
         self.children.append(child_greenlet)
 
     def on_job_fail(self, cb):
@@ -301,7 +305,7 @@ def create_worker(redis_url, timeout=None, max_attempts=None,
                   result_ttl=None, pool_size=None):
     timeout = timeout or 0
     max_attempts = max_attempts or 1
-    result_ttl = result_ttl or 1800
+    result_ttl = result_ttl or 5
     connection = redis.from_url(redis_url)
     queue = BitcasaQueue('default', connection=connection,
                          default_timeout=timeout)

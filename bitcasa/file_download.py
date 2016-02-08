@@ -31,6 +31,8 @@ class FileDownload(object):
     size_copied = None
     st = None
     url = None
+    progress_greenlet = None
+    num_iterations = None
 
 
     def __init__(self, file_id, destination, size, chunk_size=None,
@@ -141,6 +143,28 @@ class FileDownload(object):
 
         return item
 
+    def save_next_chunk(self, tmpfile, content):
+        self.num_iterations += 1
+
+        try:
+            chunk = content.next()
+        except ProtocolError as e:
+            chunk = e.args[1].partial
+            logger.warn('Using partial chunk of length: %s',
+                        len(chunk))
+        except ChunkedEncodingError as e:
+            chunk = e.args[0].args[1].partial
+            logger.warn('Using partial chunk of length: %s',
+                        len(chunk))
+        except StopIteration:
+            return False
+        if not chunk:
+            return False
+
+        tmpfile.write(chunk)
+        self.size_copied += len(chunk)
+        return True
+
     def _download_file(self, conn):
         self.st = time.time()
         url = os.path.join(BITCASA.ENDPOINTS.download, self.path.lstrip('/'))
@@ -151,39 +175,19 @@ class FileDownload(object):
             req.raw._fp.fp._sock.settimeout(100)
 
         content = req.iter_content(self.chunk_size)
-        progress_time = self.st + self.PROGRESS_INTERVAL
-        timespan = 0
+        if self.progress_greenlet:
+            self.progress_greenlet.kill(block=False)
 
-        last_chunk = None
-        chunk = None
-        num_iterations = 0
+        self.progress_greenlet = gevent.spawn_later(self.PROGRESS_INTERVAL,
+                                                    self.report_progress)
+        self.num_iterations = 0
         with open(self.destination, self.mode) as tmpfile:
             while self.alive:
-                last_chunk = chunk
-                chunk = None
-                num_iterations += 1
-                try:
-                    chunk = content.next()
-                except ProtocolError as e:
-                    chunk = e.args[1].partial
-                    logger.warn('Using partial chunk of length: %s',
-                                len(chunk))
-                except ChunkedEncodingError as e:
-                    chunk = e.args[0].args[1].partial
-                    logger.warn('Using partial chunk of length: %s',
-                                len(chunk))
-                except StopIteration:
+                if not self.save_next_chunk(tmpfile, content):
                     break
-                if not chunk:
-                    break
-                tmpfile.write(chunk)
-                cr = time.time()
-                self.size_copied += len(chunk)
 
-                if progress_time < cr:
-                    progress_time = cr + self.PROGRESS_INTERVAL
-                    self.report_progress(cr)
-
+        self.progress_greenlet.kill(block=False)
+        self.progress_greenlet = None
         size_copied_str = utils.convert_size(self.size_copied)
         size_str = utils.convert_size(self.size)
 
@@ -198,7 +202,8 @@ class FileDownload(object):
 
         conn.request_lock.release()
 
-    def report_progress(self, cr):
+    def report_progress(self):
+        cr = time.time()
         speed = utils.get_speed(self.size_copied-self.seek, (cr-self.st))
         size_copied_str = utils.convert_size(self.size_copied)
         size_str = utils.convert_size(self.size)
@@ -206,5 +211,8 @@ class FileDownload(object):
                                              self.size-self.size_copied,
                                              (cr-self.st))
         logger.info(self.destination)
-        logger.info('Downloaded %s of %s at %s. %s left',
-                    size_copied_str, size_str, speed, time_left)
+        logger.info('Downloaded %s of %s at %s. %s left. %s iterations',
+                    size_copied_str, size_str, speed, time_left,
+                    self.num_iterations)
+        self.progress_greenlet = gevent.spawn_later(self.PROGRESS_INTERVAL,
+                                                    self.report_progress)

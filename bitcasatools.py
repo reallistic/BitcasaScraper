@@ -13,11 +13,13 @@ if cur_version < pyssl_version:
     urllib3.contrib.pyopenssl.inject_into_urllib3()
 
 import traceback
+import newrelic.agent
 from bdb import BdbQuit
 
 from bitcasa import BitcasaDriveApp, current_app
 
 def main():
+    newrelic.agent.initialize('newrelic.ini', 'worker')
     with BitcasaDriveApp().get_context():
         current_app.run()
 

@@ -1,6 +1,7 @@
 import os
 import logging
 import gevent
+import newrelic.agent
 
 from .globals import BITCASA, connection_pool, current_app
 from .async import async
@@ -21,6 +22,7 @@ def list_folder(folder=None, url=None, level=0, max_depth=1, job_id=None,
     if not parent:
         parent = '/'.join(url.split('/')[:-1])
 
+    newrelic.agent.add_custom_parameter('object_path', url)
     url = os.path.join(BITCASA.ENDPOINTS.root_folder.rstrip('/'), url.lstrip('/'))
 
     num_retries = 30

@@ -15,3 +15,4 @@ urllib3==1.13.1
 rq==0.4.6
 rq-dashboard==0.3.4
 git+https://github.com/mtsgrd/rq-gevent-worker.git@4b31aaf5275f079e369769ebf10399f9d3b70c13
+newrelic

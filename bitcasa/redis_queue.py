@@ -8,7 +8,7 @@ import sys
 import redis
 import random
 import traceback
-#import newrelic.agent
+import newrelic.agent
 
 # Disable log handler setup before importing rq related code.
 import rq.logutils
@@ -66,10 +66,10 @@ class BitcasaJob(Job):
         _job_stack.push(self.id)
         try:
             self.set_status(Status.STARTED)
-            #newrelic_decorated_func = newrelic.agent.background_task()(self.func)
-            #self._result = newrelic_decorated_func(*self.args, **self.kwargs)
             self.kwargs.update(job_id=self.id)
-            self._result = self.func(*self.args, **self.kwargs)
+            newrelic_decorated_func = newrelic.agent.background_task()(self.func)
+            self._result = newrelic_decorated_func(*self.args, **self.kwargs)
+            #self._result = self.func(*self.args, **self.kwargs)
             self.ended_at = utcnow()
             self.set_status(Status.FINISHED)
         finally:

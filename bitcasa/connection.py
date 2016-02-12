@@ -93,7 +93,7 @@ class ConnectionPool(object):
         if len(self._connections) < self.max_connections:
             return True
 
-    def pop(self, force=False):
+    def pop(self, force=False, clear=False):
         try:
             return self._connection_stack.get_nowait()
         except Empty:
@@ -102,11 +102,17 @@ class ConnectionPool(object):
         with self._connect_lock:
             if force or self.can_make_connection():
                 logger.debug('Making new connection')
-                conn = ConnectionContext(self)
+                conn = ConnectionContext(self, clear=clear)
                 self._connections.append(conn)
                 return conn
 
         return self._connection_stack.get()
+
+    def clear(self, conn):
+        try:
+            self._connections.remove(conn)
+        except ValueError:
+            pass
 
     def push(self, conn):
         self._connection_stack.put(conn)

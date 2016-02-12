@@ -124,32 +124,6 @@ class AuthenticationManager(object):
         with RequestHelper(self, validate=validate) as req:
             return req.send(method.upper(), url, **kwargs)
 
-        error_message = 'Error connecting to drive.bitcasa.com. %s'
-        response_data = {}
-        resp = None
-        try:
-            resp = self._session.request(method.upper(), url, **kwargs)
-            response_data = resp.json()
-            resp.raise_for_status()
-        except (ValueError, RequestException) as e:
-            error = resp.content[:30] if resp is not None else e
-            response_data.setdefault('error', error)
-            logger.exception('%s - %s', error, url)
-
-        error = response_data.get('error')
-        if error is not None:
-            if error == 'unauthorized':
-                self._connected = False
-
-            self.request_lock.release()
-            raise ConnectionError(error_message % response_data.get('error'))
-
-        if not self._connected:
-            self._connected = True
-
-        # Copy to prevent memory leak
-        return response_data.copy()
-
     def set_cookies(self):
         sess = dryscrape.Session(base_url=BITCASA.BASE_URL)
 

@@ -3,7 +3,6 @@ import logging
 import gevent
 import os
 import time
-import select
 import traceback
 
 from requests.exceptions import ChunkedEncodingError, RequestException
@@ -17,6 +16,13 @@ from .models import FileDownloadResult
 
 logger = logging.getLogger(__name__)
 
+
+def get_gid():
+    greenlet = gevent.getcurrent()
+    func_name = 'n/a'
+    if greenlet and hasattr(greenlet, '_run'):
+        func_name = greenlet._run.__name__
+    return getattr(greenlet, 'gid', func_name)
 
 class FileDownload(object):
 
@@ -32,7 +38,6 @@ class FileDownload(object):
     st = None
     url = None
     progress_greenlet = None
-    num_iterations = None
 
 
     def __init__(self, file_id, destination, size, chunk_size=None,
@@ -87,7 +92,6 @@ class FileDownload(object):
                 ctx = connection_pool.pop()
                 with ctx as conn:
                     # throw away this connection
-                    ctx.clear()
                     self._download_file(conn)
             except SizeMismatchError:
                 self.num_size_retries -= 1
@@ -102,6 +106,7 @@ class FileDownload(object):
                                      self.destination)
                     gevent.sleep(5)
             except (ConnectionError, RequestException):
+                ctx.clear()
                 self.num_retries -= 1
                 if self.num_retries <= 0:
                     error = traceback.format_exc()
@@ -144,8 +149,6 @@ class FileDownload(object):
         return item
 
     def save_next_chunk(self, tmpfile, content):
-        self.num_iterations += 1
-
         try:
             chunk = content.next()
         except ProtocolError as e:
@@ -166,21 +169,22 @@ class FileDownload(object):
         return True
 
     def _download_file(self, conn):
+        if self.progress_greenlet:
+            self.progress_greenlet.kill(block=False)
+        self.progress_greenlet = gevent.spawn_later(self.PROGRESS_INTERVAL,
+                                                    self.report_progress)
+        gid = get_gid()
+        self.progress_greenlet.gid = gid
         self.st = time.time()
         url = os.path.join(BITCASA.ENDPOINTS.download, self.path.lstrip('/'))
         req = conn.make_download_request(url, seek=self.seek)
-        # We probably won't be able to download anything, but that
-        # will get caught below.
+        # We probably won't be able to download anything if this is True,
+        # but that will get caught below.
         if req.raw._fp and not req.raw._fp.isclosed():
             req.raw._fp.fp._sock.settimeout(100)
 
         content = req.iter_content(self.chunk_size)
-        if self.progress_greenlet:
-            self.progress_greenlet.kill(block=False)
 
-        self.progress_greenlet = gevent.spawn_later(self.PROGRESS_INTERVAL,
-                                                    self.report_progress)
-        self.num_iterations = 0
         with open(self.destination, self.mode) as tmpfile:
             while self.alive:
                 if not self.save_next_chunk(tmpfile, content):
@@ -200,8 +204,6 @@ class FileDownload(object):
                         size_copied_str, size_str)
         self._finished = True
 
-        conn.request_lock.release()
-
     def report_progress(self):
         cr = time.time()
         speed = utils.get_speed(self.size_copied-self.seek, (cr-self.st))
@@ -211,8 +213,9 @@ class FileDownload(object):
                                              self.size-self.size_copied,
                                              (cr-self.st))
         logger.info(self.destination)
-        logger.info('Downloaded %s of %s at %s. %s left. %s iterations',
-                    size_copied_str, size_str, speed, time_left,
-                    self.num_iterations)
+        logger.info('Downloaded %s of %s at %s. %s left.',
+                    size_copied_str, size_str, speed, time_left)
         self.progress_greenlet = gevent.spawn_later(self.PROGRESS_INTERVAL,
                                                     self.report_progress)
+        gid = get_gid()
+        self.progress_greenlet.gid = gid

@@ -78,11 +78,13 @@ class BitcasaDriveAppContext(object):
 class ConnectionContext(object):
     _pool = None
     _valid = None
+    _clear = None
 
-    def __init__(self, pool):
+    def __init__(self, pool, clear=False):
         self._pool = pool
         self.auth = self._pool._connect()
         self._valid = True
+        self._clear = clear
 
     def __getattr__(self, name):
         return getattr(self._pool, name)
@@ -92,12 +94,15 @@ class ConnectionContext(object):
             return self.auth
 
     def __exit__(self, exc_type, exc_value, tb):
-        if self._valid:
+        if self._valid and not self._clear:
             self._pool.push(self)
+        if self._clear:
+            self.clear()
 
     def clear(self):
         self._valid = False
         self.auth = None
+        self._pool.clear(self)
 
 
 def copy_current_app_ctx(f):
